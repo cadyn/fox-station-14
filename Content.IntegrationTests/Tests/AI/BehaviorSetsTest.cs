@@ -7,19 +7,17 @@ using Content.Server.AI.Utility.AiLogic;
 using NUnit.Framework;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Reflection;
-using YamlDotNet.RepresentationModel;
 
 namespace Content.IntegrationTests.Tests.AI
 {
     [TestFixture]
     [TestOf(typeof(BehaviorSetPrototype))]
-    public class BehaviorSetsTest : ContentIntegrationTest
+    public sealed class BehaviorSetsTest : ContentIntegrationTest
     {
         [Test]
         public async Task TestBehaviorSets()
         {
-            var options = new ServerIntegrationOptions();
-            var server = StartServerDummyTicker(options);
+            var server = StartServer();
             await server.WaitIdleAsync();
 
             var protoManager = server.ResolveDependency<IPrototypeManager>();

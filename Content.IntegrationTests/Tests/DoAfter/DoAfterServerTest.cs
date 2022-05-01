@@ -1,7 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Content.Server.DoAfter;
-using Content.Server.GameObjects.Components;
 using NUnit.Framework;
 using Robust.Shared.GameObjects;
 using Robust.Shared.IoC;
@@ -12,7 +11,7 @@ namespace Content.IntegrationTests.Tests.DoAfter
 {
     [TestFixture]
     [TestOf(typeof(DoAfterComponent))]
-    public class DoAfterServerTest : ContentIntegrationTest
+    public sealed class DoAfterServerTest : ContentIntegrationTest
     {
         private const string Prototypes = @"
 - type: entity
@@ -27,7 +26,7 @@ namespace Content.IntegrationTests.Tests.DoAfter
         {
             Task<DoAfterStatus> task = null;
             var options = new ServerIntegrationOptions{ExtraPrototypes = Prototypes};
-            var server = StartServerDummyTicker(options);
+            var server = StartServer(options);
 
             // That it finishes successfully
             server.Post(() =>
@@ -51,7 +50,7 @@ namespace Content.IntegrationTests.Tests.DoAfter
         {
             Task<DoAfterStatus> task = null;
             var options = new ServerIntegrationOptions{ExtraPrototypes = Prototypes};
-            var server = StartServerDummyTicker(options);
+            var server = StartServer(options);
 
             server.Post(() =>
             {

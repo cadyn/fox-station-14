@@ -9,17 +9,16 @@ namespace Content.Server.Construction.Completions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class AddContainer : IGraphAction
+    public sealed class AddContainer : IGraphAction
     {
         [DataField("container")] public string? Container { get; private set; } = null;
 
-        public async Task PerformAction(IEntity entity, IEntity? user)
+        public void PerformAction(EntityUid uid, EntityUid? userUid, IEntityManager entityManager)
         {
-            if (entity.Deleted || string.IsNullOrEmpty(Container))
+            if (string.IsNullOrEmpty(Container))
                 return;
 
-            var construction = entity.GetComponent<ConstructionComponent>();
-            construction.AddContainer(Container);
+            entityManager.EntitySysManager.GetEntitySystem<ConstructionSystem>().AddContainer(uid, Container);
         }
     }
 }

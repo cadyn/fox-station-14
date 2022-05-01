@@ -1,11 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.IO;
 using System.Net;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Content.Shared;
+using Content.Server.Administration.Logs;
+using Content.Shared.Administration.Logs;
 using Content.Shared.CCVar;
 using Content.Shared.Preferences;
 using Microsoft.Data.Sqlite;
@@ -14,13 +14,9 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using Robust.Shared.Configuration;
 using Robust.Shared.ContentPack;
-using Robust.Shared.IoC;
-using Robust.Shared.Log;
-using Robust.Shared.Maths;
 using Robust.Shared.Network;
 using LogLevel = Robust.Shared.Log.LogLevel;
 using MSLogLevel = Microsoft.Extensions.Logging.LogLevel;
-
 
 namespace Content.Server.Database
 {
@@ -28,7 +24,7 @@ namespace Content.Server.Database
     {
         void Init();
 
-        // Preferences
+        #region Preferences
         Task<PlayerPreferences> InitPrefsAsync(NetUserId userId, ICharacterProfile defaultProfile);
         Task SaveSelectedCharacterIndexAsync(NetUserId userId, int index);
 
@@ -39,12 +35,15 @@ namespace Content.Server.Database
         // Single method for two operations for transaction.
         Task DeleteSlotAndSetSelectedIndex(NetUserId userId, int deleteSlot, int newSlot);
         Task<PlayerPreferences?> GetPlayerPreferencesAsync(NetUserId userId);
+        #endregion
 
+        #region User Ids
         // Username assignment (for guest accounts, so they persist GUID)
         Task AssignUserIdAsync(string name, NetUserId userId);
         Task<NetUserId?> GetAssignedUserIdAsync(string name);
+        #endregion
 
-        // Ban stuff
+        #region Bans
         /// <summary>
         ///     Looks up a ban by id.
         ///     This will return a pardoned ban as well.
@@ -69,22 +68,53 @@ namespace Content.Server.Database
 
         /// <summary>
         ///     Looks up an user's ban history.
-        ///     This will return pardoned bans as well.
         ///     One of <see cref="address"/> or <see cref="userId"/> need to not be null.
         /// </summary>
         /// <param name="address">The ip address of the user.</param>
         /// <param name="userId">The id of the user.</param>
         /// <param name="hwId">The HWId of the user.</param>
+        /// <param name="includeUnbanned">If true, bans that have been expired or pardoned are also included.</param>
         /// <returns>The user's ban history.</returns>
         Task<List<ServerBanDef>> GetServerBansAsync(
             IPAddress? address,
             NetUserId? userId,
-            ImmutableArray<byte>? hwId);
+            ImmutableArray<byte>? hwId,
+            bool includeUnbanned=true);
 
         Task AddServerBanAsync(ServerBanDef serverBan);
         Task AddServerUnbanAsync(ServerUnbanDef serverBan);
+        #endregion
 
-        // Player records
+        #region Role Bans
+        /// <summary>
+        ///     Looks up a role ban by id.
+        ///     This will return a pardoned role ban as well.
+        /// </summary>
+        /// <param name="id">The role ban id to look for.</param>
+        /// <returns>The role ban with the given id or null if none exist.</returns>
+        Task<ServerRoleBanDef?> GetServerRoleBanAsync(int id);
+
+        /// <summary>
+        ///     Looks up an user's role ban history.
+        ///     This will return pardoned role bans based on the <see cref="includeUnbanned"/> bool.
+        ///     Requires one of <see cref="address"/>, <see cref="userId"/>, or <see cref="hwId"/> to not be null.
+        /// </summary>
+        /// <param name="address">The IP address of the user.</param>
+        /// <param name="userId">The NetUserId of the user.</param>
+        /// <param name="hwId">The Hardware Id of the user.</param>
+        /// <param name="includeUnbanned">Whether expired and pardoned bans are included.</param>
+        /// <returns>The user's role ban history.</returns>
+        Task<List<ServerRoleBanDef>> GetServerRoleBansAsync(
+            IPAddress? address,
+            NetUserId? userId,
+            ImmutableArray<byte>? hwId,
+            bool includeUnbanned = true);
+
+        Task AddServerRoleBanAsync(ServerRoleBanDef serverBan);
+        Task AddServerRoleUnbanAsync(ServerRoleUnbanDef serverBan);
+        #endregion
+
+        #region Player Records
         Task UpdatePlayerRecordAsync(
             NetUserId userId,
             string userName,
@@ -92,15 +122,22 @@ namespace Content.Server.Database
             ImmutableArray<byte> hwId);
         Task<PlayerRecord?> GetPlayerRecordByUserName(string userName, CancellationToken cancel = default);
         Task<PlayerRecord?> GetPlayerRecordByUserId(NetUserId userId, CancellationToken cancel = default);
+        #endregion
 
-        // Connection log
-        Task AddConnectionLogAsync(
+        #region Connection Logs
+        /// <returns>ID of newly inserted connection log row.</returns>
+        Task<int> AddConnectionLogAsync(
             NetUserId userId,
             string userName,
             IPAddress address,
-            ImmutableArray<byte> hwId);
+            ImmutableArray<byte> hwId,
+            ConnectionDenyReason? denied);
 
-        // Admins
+        Task AddServerBanHitsAsync(int connection, IEnumerable<ServerBanDef> bans);
+
+        #endregion
+
+        #region Admin Ranks
         Task<Admin?> GetAdminDataForAsync(NetUserId userId, CancellationToken cancel = default);
         Task<AdminRank?> GetAdminRankAsync(int id, CancellationToken cancel = default);
 
@@ -114,6 +151,60 @@ namespace Content.Server.Database
         Task RemoveAdminRankAsync(int rankId, CancellationToken cancel = default);
         Task AddAdminRankAsync(AdminRank rank, CancellationToken cancel = default);
         Task UpdateAdminRankAsync(AdminRank rank, CancellationToken cancel = default);
+        #endregion
+
+        #region Rounds
+
+        Task<int> AddNewRound(Server server, params Guid[] playerIds);
+        Task<Round> GetRound(int id);
+        Task AddRoundPlayers(int id, params Guid[] playerIds);
+
+        #endregion
+
+        #region Admin Logs
+
+        Task<Server> AddOrGetServer(string serverName);
+        Task AddAdminLogs(List<QueuedLog> logs);
+        IAsyncEnumerable<string> GetAdminLogMessages(LogFilter? filter = null);
+        IAsyncEnumerable<SharedAdminLog> GetAdminLogs(LogFilter? filter = null);
+        IAsyncEnumerable<JsonDocument> GetAdminLogsJson(LogFilter? filter = null);
+
+        #endregion
+
+        #region Whitelist
+
+        Task<bool> GetWhitelistStatusAsync(NetUserId player);
+
+        Task AddToWhitelistAsync(NetUserId player);
+
+        Task RemoveFromWhitelistAsync(NetUserId player);
+
+        #endregion
+
+        #region Uploaded Resources Logs
+
+        Task AddUploadedResourceLogAsync(NetUserId user, DateTime date, string path, byte[] data);
+
+        Task PurgeUploadedResourceLogAsync(int days);
+
+        #endregion
+
+        #region Rules
+
+        Task<DateTime?> GetLastReadRules(NetUserId player);
+        Task SetLastReadRules(NetUserId player, DateTime time);
+
+        #endregion
+
+        #region Admin Notes
+
+        Task<int> AddAdminNote(int? roundId, Guid player, string message, Guid createdBy, DateTime createdAt);
+        Task<AdminNote?> GetAdminNote(int id);
+        Task<List<AdminNote>> GetAdminNotes(Guid player);
+        Task DeleteAdminNote(int id, Guid deletedBy, DateTime deletedAt);
+        Task EditAdminNote(int id, string message, Guid editedBy, DateTime editedAt);
+
+        #endregion
     }
 
     public sealed class ServerDbManager : IServerDbManager
@@ -139,12 +230,12 @@ namespace Content.Server.Database
             switch (engine)
             {
                 case "sqlite":
-                    var options = CreateSqliteOptions();
-                    _db = new ServerDbSqlite(options);
+                    var sqliteOptions = CreateSqliteOptions();
+                    _db = new ServerDbSqlite(sqliteOptions);
                     break;
                 case "postgres":
-                    options = CreatePostgresOptions();
-                    _db = new ServerDbPostgres(options);
+                    var pgOptions = CreatePostgresOptions();
+                    _db = new ServerDbPostgres(pgOptions);
                     break;
                 default:
                     throw new InvalidDataException($"Unknown database engine {engine}.");
@@ -207,9 +298,10 @@ namespace Content.Server.Database
         public Task<List<ServerBanDef>> GetServerBansAsync(
             IPAddress? address,
             NetUserId? userId,
-            ImmutableArray<byte>? hwId)
+            ImmutableArray<byte>? hwId,
+            bool includeUnbanned=true)
         {
-            return _db.GetServerBansAsync(address, userId, hwId);
+            return _db.GetServerBansAsync(address, userId, hwId, includeUnbanned);
         }
 
         public Task AddServerBanAsync(ServerBanDef serverBan)
@@ -221,6 +313,32 @@ namespace Content.Server.Database
         {
             return _db.AddServerUnbanAsync(serverUnban);
         }
+
+        #region Role Ban
+        public Task<ServerRoleBanDef?> GetServerRoleBanAsync(int id)
+        {
+            return _db.GetServerRoleBanAsync(id);
+        }
+
+        public Task<List<ServerRoleBanDef>> GetServerRoleBansAsync(
+            IPAddress? address,
+            NetUserId? userId,
+            ImmutableArray<byte>? hwId,
+            bool includeUnbanned = true)
+        {
+            return _db.GetServerRoleBansAsync(address, userId, hwId, includeUnbanned);
+        }
+
+        public Task AddServerRoleBanAsync(ServerRoleBanDef serverRoleBan)
+        {
+            return _db.AddServerRoleBanAsync(serverRoleBan);
+        }
+
+        public Task AddServerRoleUnbanAsync(ServerRoleUnbanDef serverRoleUnban)
+        {
+            return _db.AddServerRoleUnbanAsync(serverRoleUnban);
+        }
+        #endregion
 
         public Task UpdatePlayerRecordAsync(
             NetUserId userId,
@@ -241,13 +359,19 @@ namespace Content.Server.Database
             return _db.GetPlayerRecordByUserId(userId, cancel);
         }
 
-        public Task AddConnectionLogAsync(
+        public Task<int> AddConnectionLogAsync(
             NetUserId userId,
             string userName,
             IPAddress address,
-            ImmutableArray<byte> hwId)
+            ImmutableArray<byte> hwId,
+            ConnectionDenyReason? denied)
         {
-            return _db.AddConnectionLogAsync(userId, userName, address, hwId);
+            return _db.AddConnectionLogAsync(userId, userName, address, hwId, denied);
+        }
+
+        public Task AddServerBanHitsAsync(int connection, IEnumerable<ServerBanDef> bans)
+        {
+            return _db.AddServerBanHitsAsync(connection, bans);
         }
 
         public Task<Admin?> GetAdminDataForAsync(NetUserId userId, CancellationToken cancel = default)
@@ -291,12 +415,123 @@ namespace Content.Server.Database
             return _db.AddAdminRankAsync(rank, cancel);
         }
 
+        public Task<int> AddNewRound(Server server, params Guid[] playerIds)
+        {
+            return _db.AddNewRound(server, playerIds);
+        }
+
+        public Task<Round> GetRound(int id)
+        {
+            return _db.GetRound(id);
+        }
+
+        public Task AddRoundPlayers(int id, params Guid[] playerIds)
+        {
+            return _db.AddRoundPlayers(id, playerIds);
+        }
+
         public Task UpdateAdminRankAsync(AdminRank rank, CancellationToken cancel = default)
         {
             return _db.UpdateAdminRankAsync(rank, cancel);
         }
 
-        private DbContextOptions<ServerDbContext> CreatePostgresOptions()
+        public Task<Server> AddOrGetServer(string serverName)
+        {
+            return _db.AddOrGetServer(serverName);
+        }
+
+        public Task AddAdminLogs(List<QueuedLog> logs)
+        {
+            return _db.AddAdminLogs(logs);
+        }
+
+        public IAsyncEnumerable<string> GetAdminLogMessages(LogFilter? filter = null)
+        {
+            return _db.GetAdminLogMessages(filter);
+        }
+
+        public IAsyncEnumerable<SharedAdminLog> GetAdminLogs(LogFilter? filter = null)
+        {
+            return _db.GetAdminLogs(filter);
+        }
+
+        public IAsyncEnumerable<JsonDocument> GetAdminLogsJson(LogFilter? filter = null)
+        {
+            return _db.GetAdminLogsJson(filter);
+        }
+
+        public Task<bool> GetWhitelistStatusAsync(NetUserId player)
+        {
+            return _db.GetWhitelistStatusAsync(player);
+        }
+
+        public Task AddToWhitelistAsync(NetUserId player)
+        {
+            return _db.AddToWhitelistAsync(player);
+        }
+
+        public Task RemoveFromWhitelistAsync(NetUserId player)
+        {
+            return _db.RemoveFromWhitelistAsync(player);
+        }
+
+        public Task AddUploadedResourceLogAsync(NetUserId user, DateTime date, string path, byte[] data)
+        {
+            return _db.AddUploadedResourceLogAsync(user, date, path, data);
+        }
+
+        public Task PurgeUploadedResourceLogAsync(int days)
+        {
+            return _db.PurgeUploadedResourceLogAsync(days);
+        }
+
+        public Task<DateTime?> GetLastReadRules(NetUserId player)
+        {
+            return _db.GetLastReadRules(player);
+        }
+
+        public Task SetLastReadRules(NetUserId player, DateTime time)
+        {
+            return _db.SetLastReadRules(player, time);
+        }
+
+        public Task<int> AddAdminNote(int? roundId, Guid player, string message, Guid createdBy, DateTime createdAt)
+        {
+            var note = new AdminNote
+            {
+                RoundId = roundId,
+                CreatedById = createdBy,
+                LastEditedById = createdBy,
+                PlayerUserId = player,
+                Message = message,
+                CreatedAt = createdAt,
+                LastEditedAt = createdAt
+            };
+
+            return _db.AddAdminNote(note);
+        }
+
+        public Task<AdminNote?> GetAdminNote(int id)
+        {
+            return _db.GetAdminNote(id);
+        }
+
+        public Task<List<AdminNote>> GetAdminNotes(Guid player)
+        {
+            return _db.GetAdminNotes(player);
+        }
+
+        public Task DeleteAdminNote(int id, Guid deletedBy, DateTime deletedAt)
+        {
+            return _db.DeleteAdminNote(id, deletedBy, deletedAt);
+        }
+
+        public Task EditAdminNote(int id, string message, Guid editedBy, DateTime editedAt)
+        {
+            return _db.EditAdminNote(id, message, editedBy, editedAt);
+        }
+
+        private DbContextOptions<PostgresServerDbContext> CreatePostgresOptions()
         {
             var host = _cfg.GetCVar(CCVars.DatabasePgHost);
             var port = _cfg.GetCVar(CCVars.DatabasePgPort);
@@ -304,7 +539,7 @@ namespace Content.Server.Database
             var user = _cfg.GetCVar(CCVars.DatabasePgUsername);
             var pass = _cfg.GetCVar(CCVars.DatabasePgPassword);
 
-            var builder = new DbContextOptionsBuilder<ServerDbContext>();
+            var builder = new DbContextOptionsBuilder<PostgresServerDbContext>();
             var connectionString = new NpgsqlConnectionStringBuilder
             {
                 Host = host,
@@ -313,14 +548,17 @@ namespace Content.Server.Database
                 Username = user,
                 Password = pass
             }.ConnectionString;
+
+            Logger.DebugS("db.manager", $"Using Postgres \"{host}:{port}/{db}\"");
+
             builder.UseNpgsql(connectionString);
             SetupLogging(builder);
             return builder.Options;
         }
 
-        private DbContextOptions<ServerDbContext> CreateSqliteOptions()
+        private DbContextOptions<SqliteServerDbContext> CreateSqliteOptions()
         {
-            var builder = new DbContextOptionsBuilder<ServerDbContext>();
+            var builder = new DbContextOptionsBuilder<SqliteServerDbContext>();
 
             var configPreferencesDbPath = _cfg.GetCVar(CCVars.DatabaseSqliteDbPath);
             var inMemory = _res.UserData.RootDir == null;
@@ -329,10 +567,12 @@ namespace Content.Server.Database
             if (!inMemory)
             {
                 var finalPreferencesDbPath = Path.Combine(_res.UserData.RootDir!, configPreferencesDbPath);
+                Logger.DebugS("db.manager", $"Using SQLite DB \"{finalPreferencesDbPath}\"");
                 connection = new SqliteConnection($"Data Source={finalPreferencesDbPath}");
             }
             else
             {
+                Logger.DebugS("db.manager", $"Using in-memory SQLite DB");
                 connection = new SqliteConnection("Data Source=:memory:");
                 // When using an in-memory DB we have to open it manually
                 // so EFCore doesn't open, close and wipe it.
@@ -344,7 +584,7 @@ namespace Content.Server.Database
             return builder.Options;
         }
 
-        private void SetupLogging(DbContextOptionsBuilder<ServerDbContext> builder)
+        private void SetupLogging(DbContextOptionsBuilder builder)
         {
             builder.UseLoggerFactory(_msLoggerFactory);
         }
@@ -377,8 +617,8 @@ namespace Content.Server.Database
                 _sawmill = sawmill;
             }
 
-            public void Log<TState>(MSLogLevel logLevel, EventId eventId, TState state, Exception exception,
-                Func<TState, Exception, string> formatter)
+            public void Log<TState>(MSLogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
             {
                 var lvl = logLevel switch
                 {

@@ -9,16 +9,17 @@ namespace Content.Server.Construction.Completions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class EmptyAllContainers : IGraphAction
+    public sealed class EmptyAllContainers : IGraphAction
     {
-        public async Task PerformAction(IEntity entity, IEntity? user)
+        public void PerformAction(EntityUid uid, EntityUid? userUid, IEntityManager entityManager)
         {
-            if (entity.Deleted || !entity.TryGetComponent<ContainerManagerComponent>(out var containerManager))
+            if (!entityManager.TryGetComponent(uid, out ContainerManagerComponent? containerManager))
                 return;
 
+            var transform = entityManager.GetComponent<TransformComponent>(uid);
             foreach (var container in containerManager.GetAllContainers())
             {
-                container.EmptyContainer(true, entity.Transform.Coordinates);
+                container.EmptyContainer(true, transform.Coordinates);
             }
         }
     }

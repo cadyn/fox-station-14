@@ -1,7 +1,13 @@
+# -- WARNING --
+# These spawners are all deprecated.
+# Please edit the suspicion loot table instead. Thanks.
+# -- WARNING --
+
 - type: entity
   name: Suspicion Rifle Spawner
   id: SuspicionRifleSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -19,12 +25,13 @@
         - RifleCalico
       chance: 0.75
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Pistol Spawner
   id: SuspicionPistolSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -45,12 +52,13 @@
         - PistolPaco
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Melee Spawner
   id: SuspicionMeleeSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -66,12 +74,13 @@
         - Stunbaton
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Revolver Spawner
   id: SuspicionRevolverSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -84,12 +93,13 @@
         - RevolverMateba
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Shotgun Spawner
   id: SuspicionShotgunSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -106,12 +116,13 @@
         - ShotgunSawn
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion SMG Spawner
   id: SuspicionSMGSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -126,12 +137,13 @@
         - SmgZoric
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Sniper Spawner
   id: SuspicionSniperSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -144,12 +156,13 @@
         - SniperHeavy
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Hitscan Spawner
   id: SuspicionHitscanSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -166,12 +179,13 @@
         - TaserGun
       chance: 0.85
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Launchers Spawner
   id: SuspicionLaunchersSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -183,12 +197,13 @@
         - LauncherRocket
       chance: 0.75
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Grenades Spawner
   id: SuspicionGrenadesSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -206,12 +221,13 @@
         - SoapSyndie # shhh!
       chance: 0.75
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Rifle Ammo Spawner
   id: SuspicionRifleMagazineSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -227,12 +243,13 @@
         - MagazinePistolCalicoTopMounted
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Shotgun Ammo Spawner
   id: SuspicionShotgunMagazineSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -243,12 +260,13 @@
         - MagazineShotgun
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Pistol Ammo Spawner
   id: SuspicionPistolMagazineSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -260,12 +278,13 @@
         - MagazineHCPistol
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Magnum Ammo Spawner
   id: SuspicionMagnumMagazineSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -277,12 +296,13 @@
         - MagazineMagnumSmg
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion
 
 - type: entity
   name: Suspicion Launcher Ammo Spawner
   id: SuspicionLauncherAmmoSpawner
   parent: MarkerBase
+  noSpawn: true
   components:
     - type: Sprite
       layers:
@@ -294,4 +314,4 @@
         - GrenadeFrag
       chance: 0.95
       gameRules:
-        - RuleSuspicion
+        - Suspicion

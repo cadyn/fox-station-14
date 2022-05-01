@@ -12,17 +12,20 @@ using Robust.Shared.IoC;
 using Robust.Shared.Map;
 using Robust.Shared.Maths;
 using Robust.Shared.Player;
+using Robust.Shared.Random;
 using Robust.Shared.Serialization.Manager.Attributes;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype.List;
 
 namespace Content.Server.Tiles
 {
     [RegisterComponent]
-    public class FloorTileItemComponent : Component, IAfterInteract
+    [ComponentProtoName("FloorTile")]
+    public sealed class FloorTileItemComponent : Component, IAfterInteract
     {
+        [Dependency] private readonly IEntityManager _entMan = default!;
         [Dependency] private readonly ITileDefinitionManager _tileDefinitionManager = default!;
+        [Dependency] private readonly IRobustRandom _random = default!;
 
-        public override string Name => "FloorTile";
         [DataField("outputs", customTypeSerializer: typeof(PrototypeIdListSerializer<ContentTileDefinition>))]
         private List<string>? _outputTiles;
 
@@ -49,25 +52,26 @@ namespace Content.Server.Tiles
 
         private void PlaceAt(IMapGrid mapGrid, EntityCoordinates location, ushort tileId, float offset = 0)
         {
-            mapGrid.SetTile(location.Offset(new Vector2(offset, offset)), new Tile(tileId));
+            var variant = _random.Pick(((ContentTileDefinition) _tileDefinitionManager[tileId]).PlacementVariants);
+            mapGrid.SetTile(location.Offset(new Vector2(offset, offset)), new Tile(tileId, 0, variant));
             SoundSystem.Play(Filter.Pvs(location), _placeTileSound.GetSound(), location, AudioHelpers.WithVariation(0.125f));
         }
 
         async Task<bool> IAfterInteract.AfterInteract(AfterInteractEventArgs eventArgs)
         {
-            if (!eventArgs.InRangeUnobstructed(ignoreInsideBlocker: true, popup: true))
+            if (!eventArgs.CanReach)
                 return true;
 
-            if (!Owner.TryGetComponent(out StackComponent? stack))
+            if (!_entMan.TryGetComponent(Owner, out StackComponent? stack))
                 return true;
 
             var mapManager = IoCManager.Resolve<IMapManager>();
 
             var location = eventArgs.ClickLocation.AlignWithClosestGridTile();
-            var locationMap = location.ToMap(Owner.EntityManager);
+            var locationMap = location.ToMap(_entMan);
             if (locationMap.MapId == MapId.Nullspace)
                 return true;
-            mapManager.TryGetGrid(location.GetGridId(Owner.EntityManager), out var mapGrid);
+            mapManager.TryGetGrid(location.GetGridId(_entMan), out var mapGrid);
 
             if (_outputTiles == null)
                 return true;
@@ -81,9 +85,9 @@ namespace Content.Server.Tiles
                     var tile = mapGrid.GetTileRef(location);
                     var baseTurf = (ContentTileDefinition) _tileDefinitionManager[tile.Tile.TypeId];
 
-                    if (HasBaseTurf(currentTileDefinition, baseTurf.Name))
+                    if (HasBaseTurf(currentTileDefinition, baseTurf.ID))
                     {
-                        if (!EntitySystem.Get<StackSystem>().Use(Owner.Uid, 1, stack))
+                        if (!EntitySystem.Get<StackSystem>().Use(Owner, 1, stack))
                             continue;
 
                         PlaceAt(mapGrid, location, currentTileDefinition.TileId);

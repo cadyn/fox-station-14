@@ -1,11 +1,12 @@
 - type: entity
   id: WeaponArc
   save: false
-  abstract: true
+  noSpawn: true
   components:
   - type: Sprite
     sprite: Effects/arcs.rsi
+    netsync: false
     noRot: false
     offset: 0, -0.85
-    drawdepth: Overlays
+    drawdepth: Effects
   - type: MeleeWeaponArcAnimation

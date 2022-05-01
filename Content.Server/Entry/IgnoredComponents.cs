@@ -6,18 +6,25 @@ namespace Content.Server.Entry
         public static string[] List => new [] {
             "ConstructionGhost",
             "IconSmooth",
-            "LowWall",
             "ReinforcedWall",
+            "StasisBedVisuals",
             "InteractionOutline",
             "MeleeWeaponArcAnimation",
             "AnimationsTest",
             "ItemStatus",
+            "VehicleVisuals",
             "Marker",
             "Clickable",
-            "RadiatingLight",
             "Icon",
             "ClientEntitySpawner",
-            "ToySingularity"
+            "CharacterInfo",
+            "ItemCabinetVisuals",
+            "LatheVisuals",
+            "DiseaseMachineVisuals",
+            "HandheldGPS",
+            "ToggleableLightVisuals",
+            "PotencyVisuals",
+            "PaperVisuals"
         };
     }
 }

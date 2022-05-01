@@ -6,7 +6,6 @@
   components:
   - type: Sprite
     netsync: false
-    drawdepth: Mobs # They're on the same layer as mobs, perspective.
     sprite: Structures/Doors/Shutters/blastdoor.rsi
     layers:
     - state: closed
@@ -16,6 +15,7 @@
     closeTimeTwo: 0.4
     openTimeOne: 0.4
     openTimeTwo: 0.4
+    pryTime: -1
     crushDamage:
       types:
         Blunt: 25 # yowch
@@ -32,4 +32,4 @@
   suffix: Open
   components:
   - type: Door
-    startOpen: true
+    state: Open

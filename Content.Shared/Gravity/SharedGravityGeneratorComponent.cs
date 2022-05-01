@@ -6,15 +6,14 @@ using Robust.Shared.Serialization;
 namespace Content.Shared.Gravity
 {
     [NetworkedComponent()]
+    [Virtual]
     public class SharedGravityGeneratorComponent : Component
     {
-        public override string Name => "GravityGenerator";
-
         /// <summary>
         ///     Sent to the server to set whether the generator should be on or off
         /// </summary>
         [Serializable, NetSerializable]
-        public class SwitchGeneratorMessage : BoundUserInterfaceMessage
+        public sealed class SwitchGeneratorMessage : BoundUserInterfaceMessage
         {
             public bool On;
 
@@ -24,26 +23,31 @@ namespace Content.Shared.Gravity
             }
         }
 
-        /// <summary>
-        ///     Sent to the server when requesting the status of the generator
-        /// </summary>
         [Serializable, NetSerializable]
-        public class GeneratorStatusRequestMessage : BoundUserInterfaceMessage
-        {
-            public GeneratorStatusRequestMessage()
-            {
-
-            }
-        }
-
-        [Serializable, NetSerializable]
-        public class GeneratorState : BoundUserInterfaceState
+        public sealed class GeneratorState : BoundUserInterfaceState
         {
             public bool On;
+            // 0 -> 255
+            public byte Charge;
+            public GravityGeneratorPowerStatus PowerStatus;
+            public short PowerDraw;
+            public short PowerDrawMax;
+            public short EtaSeconds;
 
-            public GeneratorState(bool on)
+            public GeneratorState(
+                bool on,
+                byte charge,
+                GravityGeneratorPowerStatus powerStatus,
+                short powerDraw,
+                short powerDrawMax,
+                short etaSeconds)
             {
                 On = on;
+                Charge = charge;
+                PowerStatus = powerStatus;
+                PowerDraw = powerDraw;
+                PowerDrawMax = powerDrawMax;
+                EtaSeconds = etaSeconds;
             }
         }
 
@@ -58,7 +62,7 @@ namespace Content.Shared.Gravity
     public enum GravityGeneratorVisuals
     {
         State,
-        CoreVisible
+        Charge
     }
 
     [Serializable, NetSerializable]
@@ -68,5 +72,14 @@ namespace Content.Shared.Gravity
         Unpowered,
         Off,
         On
+    }
+
+    [Serializable, NetSerializable]
+    public enum GravityGeneratorPowerStatus : byte
+    {
+        Off,
+        Discharging,
+        Charging,
+        FullyCharged
     }
 }

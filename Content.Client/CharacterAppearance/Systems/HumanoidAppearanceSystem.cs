@@ -4,14 +4,11 @@ using Content.Shared.CharacterAppearance;
 using Content.Shared.CharacterAppearance.Components;
 using Content.Shared.CharacterAppearance.Systems;
 using Robust.Client.GameObjects;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Maths;
 using Robust.Shared.Prototypes;
 
 namespace Content.Client.CharacterAppearance.Systems
 {
-    public class HumanoidAppearanceSystem : SharedHumanoidAppearanceSystem
+    public sealed class HumanoidAppearanceSystem : SharedHumanoidAppearanceSystem
     {
         [Dependency] private readonly SpriteAccessoryManager _accessoryManager = default!;
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
@@ -25,30 +22,87 @@ namespace Content.Client.CharacterAppearance.Systems
             SubscribeLocalEvent<HumanoidAppearanceBodyPartRemovedEvent>(BodyPartRemoved);
         }
 
-        private void UpdateLooks(EntityUid uid, HumanoidAppearanceComponent component, ChangedHumanoidAppearanceEvent args)
+        private readonly HumanoidVisualLayers[] _bodyPartLayers = {
+            HumanoidVisualLayers.Chest,
+            HumanoidVisualLayers.Head,
+            HumanoidVisualLayers.Snout,
+            HumanoidVisualLayers.Frills,
+            HumanoidVisualLayers.TailBehind,
+            HumanoidVisualLayers.TailFront,
+            HumanoidVisualLayers.Eyes,
+            HumanoidVisualLayers.RArm,
+            HumanoidVisualLayers.LArm,
+            HumanoidVisualLayers.RHand,
+            HumanoidVisualLayers.LHand,
+            HumanoidVisualLayers.RLeg,
+            HumanoidVisualLayers.LLeg,
+            HumanoidVisualLayers.RFoot,
+            HumanoidVisualLayers.LFoot
+        };
+
+        private void UpdateLooks(EntityUid uid, HumanoidAppearanceComponent component,
+            ChangedHumanoidAppearanceEvent args)
         {
-            if(!EntityManager.TryGetComponent(uid, out SpriteComponent? sprite))
+            var spriteQuery = EntityManager.GetEntityQuery<SpriteComponent>();
+
+            if (!spriteQuery.TryGetComponent(uid, out var sprite))
                 return;
 
             if (EntityManager.TryGetComponent(uid, out SharedBodyComponent? body))
             {
                 foreach (var (part, _) in body.Parts)
                 {
-                    if (part.Owner.TryGetComponent(out SpriteComponent? partSprite))
+                    if (spriteQuery.TryGetComponent(part.Owner, out var partSprite))
                     {
-                        partSprite!.Color = component.Appearance.SkinColor;
+                        partSprite.Color = component.Appearance.SkinColor;
                     }
-
                 }
             }
 
-            sprite.LayerSetColor(HumanoidVisualLayers.Hair,
-                component.CanColorHair ? component.Appearance.HairColor : Color.White);
-            sprite.LayerSetColor(HumanoidVisualLayers.FacialHair,
-                component.CanColorFacialHair ? component.Appearance.FacialHairColor : Color.White);
+            // Like body parts some stuff may not have hair.
+            if (sprite.LayerMapTryGet(HumanoidVisualLayers.Hair, out var hairLayer))
+            {
+                var hairColor = component.CanColorHair ? component.Appearance.HairColor : Color.White;
+                hairColor = component.HairMatchesSkin ? component.Appearance.SkinColor : hairColor;
+                sprite.LayerSetColor(hairLayer, hairColor.WithAlpha(component.HairAlpha));
+
+                var hairStyle = component.Appearance.HairStyleId;
+                if (string.IsNullOrWhiteSpace(hairStyle) ||
+                    !_accessoryManager.IsValidAccessoryInCategory(hairStyle, component.CategoriesHair))
+                {
+                    hairStyle = HairStyles.DefaultHairStyle;
+                }
+
+                var hairPrototype = _prototypeManager.Index<SpriteAccessoryPrototype>(hairStyle);
+                sprite.LayerSetSprite(hairLayer, hairPrototype.Sprite);
+            }
+
+            if (sprite.LayerMapTryGet(HumanoidVisualLayers.FacialHair, out var facialLayer))
+            {
+                var facialHairColor = component.CanColorHair ? component.Appearance.FacialHairColor : Color.White;
+                facialHairColor = component.HairMatchesSkin ? component.Appearance.SkinColor : facialHairColor;
+                sprite.LayerSetColor(facialLayer, facialHairColor.WithAlpha(component.HairAlpha));
+
+                var facialHairStyle = component.Appearance.FacialHairStyleId;
+                if (string.IsNullOrWhiteSpace(facialHairStyle) ||
+                    !_accessoryManager.IsValidAccessoryInCategory(facialHairStyle, component.CategoriesFacialHair))
+                {
+                    facialHairStyle = HairStyles.DefaultFacialHairStyle;
+                }
+
+                var facialHairPrototype = _prototypeManager.Index<SpriteAccessoryPrototype>(facialHairStyle);
+                sprite.LayerSetSprite(facialLayer, facialHairPrototype.Sprite);
+            }
+
+            foreach (var layer in _bodyPartLayers)
+            {
+                // Not every mob may have the furry layers hence we just skip it.
+                if (!sprite.LayerMapTryGet(layer, out var actualLayer)) continue;
+
+                sprite.LayerSetColor(actualLayer, component.Appearance.SkinColor);
+            }
 
             sprite.LayerSetColor(HumanoidVisualLayers.Eyes, component.Appearance.EyeColor);
-
             sprite.LayerSetState(HumanoidVisualLayers.Chest, component.Sex == Sex.Male ? "torso_m" : "torso_f");
             sprite.LayerSetState(HumanoidVisualLayers.Head, component.Sex == Sex.Male ? "head_m" : "head_f");
 
@@ -90,13 +144,12 @@ namespace Content.Client.CharacterAppearance.Systems
         // Scaffolding until Body is moved to ECS.
         private void BodyPartAdded(HumanoidAppearanceBodyPartAddedEvent args)
         {
-            if(!EntityManager.TryGetEntity(args.Uid, out var owner)) return;
-            if (!owner.TryGetComponent(out SpriteComponent? sprite))
+            if (!EntityManager.TryGetComponent(args.Uid, out SpriteComponent? sprite))
             {
                 return;
             }
 
-            if (!args.Args.Part.Owner.HasComponent<SpriteComponent>())
+            if (!EntityManager.HasComponent<SpriteComponent>(args.Args.Part.Owner))
             {
                 return;
             }
@@ -106,19 +159,21 @@ namespace Content.Client.CharacterAppearance.Systems
             foreach (var layer in layers)
             {
                 // ToggleMarkingVisibility(sprite, layer, true); // AnthroSystem modification
+                if (!sprite.LayerMapTryGet(layer, out _))
+                    continue;
+
                 sprite.LayerSetVisible(layer, true);
             }
         }
 
         private void BodyPartRemoved(HumanoidAppearanceBodyPartRemovedEvent args)
         {
-            if(!EntityManager.TryGetEntity(args.Uid, out var owner)) return;
-            if (!owner.TryGetComponent(out SpriteComponent? sprite))
+            if (!EntityManager.TryGetComponent(args.Uid, out SpriteComponent? sprite))
             {
                 return;
             }
 
-            if (!args.Args.Part.Owner.HasComponent<SpriteComponent>())
+            if (!EntityManager.HasComponent<SpriteComponent>(args.Args.Part.Owner))
             {
                 return;
             }

@@ -3,34 +3,31 @@ using Content.Shared.Light.Component;
 using Robust.Client.Graphics;
 using Robust.Client.UserInterface;
 using Robust.Client.UserInterface.Controls;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Maths;
 using Robust.Shared.Timing;
-using Robust.Shared.ViewVariables;
 using static Robust.Client.UserInterface.Controls.BoxContainer;
 
 namespace Content.Client.Light.Components
 {
     [RegisterComponent]
+    [Friend(typeof(HandheldLightSystem))]
     public sealed class HandheldLightComponent : SharedHandheldLightComponent, IItemStatus
     {
-        [ViewVariables] protected override bool HasCell => _level != null;
+        public byte? Level;
+        public bool Activated;
 
-        private byte? _level;
+        /// <summary>
+        ///     Whether to automatically set item-prefixes when toggling the flashlight.
+        /// </summary>
+        /// <remarks>
+        ///     Flashlights should probably be using explicit unshaded sprite, in-hand and clothing layers, this is
+        ///     mostly here for backwards compatibility.
+        /// </remarks>
+        [DataField("addPrefix")]
+        public bool AddPrefix = false;
 
         public Control MakeControl()
         {
             return new StatusControl(this);
-        }
-
-        public override void HandleComponentState(ComponentState? curState, ComponentState? nextState)
-        {
-            base.HandleComponentState(curState, nextState);
-
-            if (curState is not HandheldLightComponentState cast)
-                return;
-
-            _level = cast.Charge;
         }
 
         private sealed class StatusControl : Control
@@ -77,19 +74,16 @@ namespace Content.Client.Light.Components
             {
                 base.FrameUpdate(args);
 
-                if (!_parent.HasCell)
-                    return;
-
                 _timer += args.DeltaSeconds;
                 _timer %= TimerCycle;
 
-                var level = _parent._level;
+                var level = _parent.Level;
 
                 for (var i = 0; i < _sections.Length; i++)
                 {
                     if (i == 0)
                     {
-                        if (level == 0)
+                        if (level == 0 || level == null)
                         {
                             _sections[0].PanelOverride = StyleBoxUnlit;
                         }

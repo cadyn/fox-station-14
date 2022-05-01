@@ -14,25 +14,27 @@
   - type: Appearance
     visuals:
     - type: MicrowaveVisualizer
+  - type: ActivatableUI
+    key: enum.MicrowaveUiKey.Key
   - type: UserInterface
     interfaces:
     - key: enum.MicrowaveUiKey.Key
       type: MicrowaveBoundUserInterface
   - type: Physics
+  - type: Fixtures
     fixtures:
     - shape:
         !type:PhysShapeAabb
           bounds: "-0.3,-0.16,0.3,0.16"
       mass: 25
       layer:
-      - MobMask
-      - Opaque
+      - SmallImpassable
       mask:
-      - MobMask
+      - VaultImpassable
   - type: Sprite
     netsync: false
     sprite: Structures/Machines/microwave.rsi
-    drawdepth: WallMountedItems
+    drawdepth: SmallObjects
     layers:
     - state: mw0
       map: ["enum.MicrowaveVisualizerLayers.Base"]
@@ -47,3 +49,5 @@
       behaviors:
       - !type:DoActsBehavior
         acts: ["Breakage"]
+  - type: ApcPowerReceiver
+    powerLoad: 400

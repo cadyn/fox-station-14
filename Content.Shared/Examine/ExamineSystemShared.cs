@@ -1,96 +1,143 @@
-﻿using System;
 using System.Linq;
 using Content.Shared.DragDrop;
 using Content.Shared.Interaction;
-using Content.Shared.Interaction.Helpers;
+using Content.Shared.MobState.Components;
 using JetBrains.Annotations;
 using Robust.Shared.Containers;
-using Robust.Shared.GameObjects;
 using Robust.Shared.Map;
-using Robust.Shared.Maths;
 using Robust.Shared.Physics;
 using Robust.Shared.Utility;
 using static Content.Shared.Interaction.SharedInteractionSystem;
 
 namespace Content.Shared.Examine
 {
-    [Obsolete("Use ExaminedEvent instead.")]
-    public interface IExamine
-    {
-        /// <summary>
-        /// Returns a status examine value for components appended to the end of the description of the entity
-        /// </summary>
-        /// <param name="message">The message to append to which will be displayed.</param>
-        /// <param name="inDetailsRange">Whether the examiner is within the 'Details' range, allowing you to show information logically only availabe when close to the examined entity.</param>
-        void Examine(FormattedMessage message, bool inDetailsRange);
-    }
-
     public abstract class ExamineSystemShared : EntitySystem
     {
+        [Dependency] private readonly SharedContainerSystem _containerSystem = default!;
+        [Dependency] private readonly SharedInteractionSystem _interactionSystem = default!;
+
+        public const float MaxRaycastRange = 100;
+
+        /// <summary>
+        ///     Examine range to use when the examiner is in critical condition.
+        /// </summary>
+        /// <remarks>
+        ///     Detailed examinations are disabled while incapactiated. Ideally this should just be set equal to the
+        ///     radius of the crit overlay that blackens most of the screen. The actual radius of that is defined
+        ///     in a shader sooo... eh.
+        /// </remarks>
+        public const float CritExamineRange = 1.3f;
+
+        /// <summary>
+        ///     Examine range to use when the examiner is dead. See <see cref="CritExamineRange"/>.
+        /// </summary>
+        public const float DeadExamineRange = 0.75f;
+
         public const float ExamineRange = 16f;
-        public const float ExamineRangeSquared = ExamineRange * ExamineRange;
         protected const float ExamineDetailsRange = 3f;
 
-        private static bool IsInDetailsRange(IEntity examiner, IEntity entity)
+        /// <summary>
+        ///     Creates a new examine tooltip with arbitrary info.
+        /// </summary>
+        public abstract void SendExamineTooltip(EntityUid player, EntityUid target, FormattedMessage message, bool getVerbs, bool centerAtCursor);
+
+        public bool IsInDetailsRange(EntityUid examiner, EntityUid entity)
         {
-            if (entity.TryGetContainerMan(out var man) && man.Owner == examiner)
+            // check if the mob is in ciritcal or dead
+            if (EntityManager.TryGetComponent(examiner, out MobStateComponent mobState) && mobState.IsIncapacitated())
+                return false;
+
+            if (!_interactionSystem.InRangeUnobstructed(examiner, entity, ExamineDetailsRange))
+                return false;
+
+            // Is the target hidden in a opaque locker or something? Currently this check allows players to examine
+            // their organs, if they can somehow target them. Really this should be with userSeeInsideSelf: false, and a
+            // separate check for if the item is in their inventory or hands.
+            if (_containerSystem.IsInSameOrTransparentContainer(examiner, entity, userSeeInsideSelf: true))
                 return true;
 
-            return examiner.InRangeUnobstructed(entity, ExamineDetailsRange, ignoreInsideBlocker: true) &&
-                   examiner.IsInSameOrNoContainer(entity);
+            // is it inside of an open storage (e.g., an open backpack)?
+            return _interactionSystem.CanAccessViaStorage(examiner, entity);
         }
 
         [Pure]
-        protected static bool CanExamine(IEntity examiner, IEntity examined)
+        public bool CanExamine(EntityUid examiner, EntityUid examined)
         {
-            if (!examiner.TryGetComponent(out ExaminerComponent? examinerComponent))
-            {
+            return !Deleted(examined) && CanExamine(examiner, EntityManager.GetComponent<TransformComponent>(examined).MapPosition,
+                entity => entity == examiner || entity == examined);
+        }
+
+        [Pure]
+        public virtual bool CanExamine(EntityUid examiner, MapCoordinates target, Ignored? predicate = null)
+        {
+            if (!EntityManager.TryGetComponent(examiner, out ExaminerComponent? examinerComponent))
                 return false;
-            }
 
             if (!examinerComponent.DoRangeCheck)
-            {
                 return true;
-            }
 
-            if (examiner.Transform.MapID != examined.Transform.MapID)
-            {
+            if (EntityManager.GetComponent<TransformComponent>(examiner).MapID != target.MapId)
                 return false;
-            }
-
-            Ignored predicate = entity => entity == examiner || entity == examined;
-
-            if (examiner.TryGetContainer(out var container))
-            {
-                predicate += entity => entity == container.Owner;
-            }
 
             return InRangeUnOccluded(
-                examiner.Transform.MapPosition,
-                examined.Transform.MapPosition,
-                ExamineRange,
+                EntityManager.GetComponent<TransformComponent>(examiner).MapPosition,
+                target,
+                GetExaminerRange(examiner),
                 predicate: predicate,
                 ignoreInsideBlocker: true);
         }
 
-        public static bool InRangeUnOccluded(MapCoordinates origin, MapCoordinates other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
+        /// <summary>
+        ///     Check if a given examiner is incapacitated. If yes, return a reduced examine range. Otherwise, return the deault range.
+        /// </summary>
+        public float GetExaminerRange(EntityUid examiner, MobStateComponent? mobState = null)
         {
-            if (origin.MapId == MapId.Nullspace ||
+            if (Resolve(examiner, ref mobState, logMissing: false))
+            {
+                if (mobState.IsDead())
+                    return DeadExamineRange;
+                else if (mobState.IsCritical())
+                    return CritExamineRange;
+            }
+            return ExamineRange;
+        }
+
+        public static bool InRangeUnOccluded(MapCoordinates origin, MapCoordinates other, float range, Ignored? predicate, bool ignoreInsideBlocker = true, IEntityManager? entMan = null)
+        {
+            // No, rider. This is better.
+            // ReSharper disable once ConvertToLocalFunction
+            var wrapped = (EntityUid uid, Ignored? wrapped)
+                => wrapped != null && wrapped(uid);
+
+            return InRangeUnOccluded(origin, other, range, predicate, wrapped, ignoreInsideBlocker, entMan);
+        }
+
+        public static bool InRangeUnOccluded<TState>(MapCoordinates origin, MapCoordinates other, float range,
+            TState state, Func<EntityUid, TState, bool> predicate, bool ignoreInsideBlocker = true, IEntityManager? entMan = null)
+        {
+            if (other.MapId != origin.MapId ||
                 other.MapId == MapId.Nullspace) return false;
 
-            var occluderSystem = Get<OccluderSystem>();
-            if (!origin.InRange(other, range)) return false;
-
             var dir = other.Position - origin.Position;
+            var length = dir.Length;
 
-            if (dir.LengthSquared.Equals(0f)) return true;
-            if (range > 0f && !(dir.LengthSquared <= range * range)) return false;
+            // If range specified also check it
+            if (range > 0f && length > range) return false;
 
-            predicate ??= _ => false;
+            if (MathHelper.CloseTo(length, 0)) return true;
+
+            if (length > MaxRaycastRange)
+            {
+                Logger.Warning("InRangeUnOccluded check performed over extreme range. Limiting CollisionRay size.");
+                length = MaxRaycastRange;
+            }
+
+            var occluderSystem = Get<OccluderSystem>();
+            IoCManager.Resolve(ref entMan);
 
             var ray = new Ray(origin.Position, dir.Normalized);
             var rayResults = occluderSystem
-                .IntersectRayWithPredicate(origin.MapId, ray, dir.Length, predicate.Invoke, false).ToList();
+                .IntersectRayWithPredicate(origin.MapId, ray, length, state, predicate, false).ToList();
 
             if (rayResults.Count == 0) return true;
 
@@ -98,12 +145,12 @@ namespace Content.Shared.Examine
 
             foreach (var result in rayResults)
             {
-                if (!result.HitEntity.TryGetComponent(out OccluderComponent? o))
+                if (!entMan.TryGetComponent(result.HitEntity, out OccluderComponent? o))
                 {
                     continue;
                 }
 
-                var bBox = o.BoundingBox.Translated(o.Owner.Transform.WorldPosition);
+                var bBox = o.BoundingBox.Translated(entMan.GetComponent<TransformComponent>(o.Owner).WorldPosition);
 
                 if (bBox.Contains(origin.Position) || bBox.Contains(other.Position))
                 {
@@ -116,62 +163,70 @@ namespace Content.Shared.Examine
             return true;
         }
 
-        public static bool InRangeUnOccluded(IEntity origin, IEntity other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
+        public static bool InRangeUnOccluded(EntityUid origin, EntityUid other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
         {
-            var originPos = origin.Transform.MapPosition;
-            var otherPos = other.Transform.MapPosition;
+            var entMan = IoCManager.Resolve<IEntityManager>();
+            var originPos = entMan.GetComponent<TransformComponent>(origin).MapPosition;
+            var otherPos = entMan.GetComponent<TransformComponent>(other).MapPosition;
 
             return InRangeUnOccluded(originPos, otherPos, range, predicate, ignoreInsideBlocker);
         }
 
-        public static bool InRangeUnOccluded(IEntity origin, IComponent other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
+        public static bool InRangeUnOccluded(EntityUid origin, IComponent other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
         {
-            var originPos = origin.Transform.MapPosition;
-            var otherPos = other.Owner.Transform.MapPosition;
+            var entMan = IoCManager.Resolve<IEntityManager>();
+            var originPos = entMan.GetComponent<TransformComponent>(origin).MapPosition;
+            var otherPos = entMan.GetComponent<TransformComponent>(other.Owner).MapPosition;
 
             return InRangeUnOccluded(originPos, otherPos, range, predicate, ignoreInsideBlocker);
         }
 
-        public static bool InRangeUnOccluded(IEntity origin, EntityCoordinates other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
+        public static bool InRangeUnOccluded(EntityUid origin, EntityCoordinates other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
         {
-            var originPos = origin.Transform.MapPosition;
-            var otherPos = other.ToMap(origin.EntityManager);
+            var entMan = IoCManager.Resolve<IEntityManager>();
+            var originPos = entMan.GetComponent<TransformComponent>(origin).MapPosition;
+            var otherPos = other.ToMap(entMan);
 
             return InRangeUnOccluded(originPos, otherPos, range, predicate, ignoreInsideBlocker);
         }
 
-        public static bool InRangeUnOccluded(IEntity origin, MapCoordinates other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
+        public static bool InRangeUnOccluded(EntityUid origin, MapCoordinates other, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
         {
-            var originPos = origin.Transform.MapPosition;
+            var entMan = IoCManager.Resolve<IEntityManager>();
+            var originPos = entMan.GetComponent<TransformComponent>(origin).MapPosition;
 
             return InRangeUnOccluded(originPos, other, range, predicate, ignoreInsideBlocker);
         }
 
         public static bool InRangeUnOccluded(ITargetedInteractEventArgs args, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
         {
-            var originPos = args.User.Transform.MapPosition;
-            var otherPos = args.Target.Transform.MapPosition;
+            var entMan = IoCManager.Resolve<IEntityManager>();
+            var originPos = entMan.GetComponent<TransformComponent>(args.User).MapPosition;
+            var otherPos = entMan.GetComponent<TransformComponent>(args.Target).MapPosition;
 
             return InRangeUnOccluded(originPos, otherPos, range, predicate, ignoreInsideBlocker);
         }
 
         public static bool InRangeUnOccluded(DragDropEvent args, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
         {
-            var originPos = args.User.Transform.MapPosition;
-            var otherPos = args.DropLocation.ToMap(args.User.EntityManager);
+            var entMan = IoCManager.Resolve<IEntityManager>();
+            var originPos = entMan.GetComponent<TransformComponent>(args.User).MapPosition;
+            var otherPos = args.DropLocation.ToMap(entMan);
 
             return InRangeUnOccluded(originPos, otherPos, range, predicate, ignoreInsideBlocker);
         }
 
         public static bool InRangeUnOccluded(AfterInteractEventArgs args, float range, Ignored? predicate, bool ignoreInsideBlocker = true)
         {
-            var originPos = args.User.Transform.MapPosition;
-            var otherPos = args.Target?.Transform.MapPosition ?? args.ClickLocation.ToMap(args.User.EntityManager);
+            var entityManager = IoCManager.Resolve<IEntityManager>();;
+            var originPos = entityManager.GetComponent<TransformComponent>(args.User).MapPosition;
+            var target = args.Target;
+            var otherPos = (target != null ? entityManager.GetComponent<TransformComponent>(target.Value).MapPosition : args.ClickLocation.ToMap(entityManager));
 
             return InRangeUnOccluded(originPos, otherPos, range, predicate, ignoreInsideBlocker);
         }
 
-        public FormattedMessage GetExamineText(IEntity entity, IEntity? examiner)
+        public FormattedMessage GetExamineText(EntityUid entity, EntityUid? examiner)
         {
             var message = new FormattedMessage();
 
@@ -183,33 +238,18 @@ namespace Content.Shared.Examine
             var doNewline = false;
 
             //Add an entity description if one is declared
-            if (!string.IsNullOrEmpty(entity.Description))
+            if (!string.IsNullOrEmpty(EntityManager.GetComponent<MetaDataComponent>(entity).EntityDescription))
             {
-                message.AddText(entity.Description);
+                message.AddText(EntityManager.GetComponent<MetaDataComponent>(entity).EntityDescription);
                 doNewline = true;
             }
 
             message.PushColor(Color.DarkGray);
 
             // Raise the event and let things that subscribe to it change the message...
-            var isInDetailsRange = IsInDetailsRange(examiner, entity);
-            var examinedEvent = new ExaminedEvent(message, entity, examiner, isInDetailsRange, doNewline);
-            RaiseLocalEvent(entity.Uid, examinedEvent);
-
-            //Add component statuses from components that report one
-            foreach (var examineComponent in entity.GetAllComponents<IExamine>())
-            {
-                var subMessage = new FormattedMessage();
-                examineComponent.Examine(subMessage, isInDetailsRange);
-                if (subMessage.Tags.Count == 0)
-                    continue;
-
-                if (doNewline)
-                    message.AddText("\n");
-
-                message.AddMessage(subMessage);
-                doNewline = true;
-            }
+            var isInDetailsRange = IsInDetailsRange(examiner.Value, entity);
+            var examinedEvent = new ExaminedEvent(message, entity, examiner.Value, isInDetailsRange, doNewline);
+            RaiseLocalEvent(entity, examinedEvent);
 
             message.Pop();
 
@@ -220,7 +260,7 @@ namespace Content.Shared.Examine
     /// <summary>
     ///     Raised when an entity is examined.
     /// </summary>
-    public class ExaminedEvent : EntityEventArgs
+    public sealed class ExaminedEvent : EntityEventArgs
     {
         /// <summary>
         ///     The message that will be displayed as the examine text.
@@ -235,12 +275,12 @@ namespace Content.Shared.Examine
         /// <summary>
         ///     The entity performing the examining.
         /// </summary>
-        public IEntity Examiner { get; }
+        public EntityUid Examiner { get; }
 
         /// <summary>
         ///     Entity being examined, for broadcast event purposes.
         /// </summary>
-        public IEntity Examined { get; }
+        public EntityUid Examined { get; }
 
         /// <summary>
         ///     Whether the examiner is in range of the entity to get some extra details.
@@ -249,7 +289,7 @@ namespace Content.Shared.Examine
 
         private bool _doNewLine;
 
-        public ExaminedEvent(FormattedMessage message, IEntity examined, IEntity examiner, bool isInDetailsRange, bool doNewLine)
+        public ExaminedEvent(FormattedMessage message, EntityUid examined, EntityUid examiner, bool isInDetailsRange, bool doNewLine)
         {
             Message = message;
             Examined = examined;

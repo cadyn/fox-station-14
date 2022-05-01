@@ -13,7 +13,7 @@ namespace Content.IntegrationTests.Tests.Commands
 {
     [TestFixture]
     [TestOf(typeof(RestartRoundNowCommand))]
-    public class RestartRoundNowTest : ContentIntegrationTest
+    public sealed class RestartRoundNowTest : ContentIntegrationTest
     {
         [Test]
         [TestCase(true)]
@@ -24,7 +24,7 @@ namespace Content.IntegrationTests.Tests.Commands
             {
                 CVarOverrides =
                 {
-                    [CCVars.GameMap.Name] = "Maps/saltern.yml"
+                    [CCVars.GameMap.Name] = "saltern"
                 }
             });
 

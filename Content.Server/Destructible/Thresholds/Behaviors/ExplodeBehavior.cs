@@ -1,4 +1,3 @@
-using Content.Server.Explosion;
 using Content.Server.Explosion.Components;
 using JetBrains.Annotations;
 using Robust.Shared.GameObjects;
@@ -11,11 +10,11 @@ namespace Content.Server.Destructible.Thresholds.Behaviors
     /// </summary>
     [UsedImplicitly]
     [DataDefinition]
-    public class ExplodeBehavior : IThresholdBehavior
+    public sealed class ExplodeBehavior : IThresholdBehavior
     {
-        public void Execute(IEntity owner, DestructibleSystem system)
+        public void Execute(EntityUid owner, DestructibleSystem system)
         {
-            owner.SpawnExplosion();  
+            system.ExplosionSystem.TriggerExplosive(owner);
         }
     }
 }

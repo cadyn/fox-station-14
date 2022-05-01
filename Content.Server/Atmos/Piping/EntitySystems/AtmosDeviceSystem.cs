@@ -10,7 +10,7 @@ using Robust.Shared.Timing;
 namespace Content.Server.Atmos.Piping.EntitySystems
 {
     [UsedImplicitly]
-    public class AtmosDeviceSystem : EntitySystem
+    public sealed class AtmosDeviceSystem : EntitySystem
     {
         [Dependency] private readonly IGameTiming _gameTiming = default!;
         [Dependency] private readonly AtmosphereSystem _atmosphereSystem = default!;
@@ -26,13 +26,14 @@ namespace Content.Server.Atmos.Piping.EntitySystems
 
             SubscribeLocalEvent<AtmosDeviceComponent, ComponentInit>(OnDeviceInitialize);
             SubscribeLocalEvent<AtmosDeviceComponent, ComponentShutdown>(OnDeviceShutdown);
+            // Re-anchoring should be handled by the parent change.
             SubscribeLocalEvent<AtmosDeviceComponent, EntParentChangedMessage>(OnDeviceParentChanged);
             SubscribeLocalEvent<AtmosDeviceComponent, AnchorStateChangedEvent>(OnDeviceAnchorChanged);
         }
 
         private bool CanJoinAtmosphere(AtmosDeviceComponent component)
         {
-            return !component.RequireAnchored || component.Owner.Transform.Anchored;
+            return !component.RequireAnchored || EntityManager.GetComponent<TransformComponent>(component.Owner).Anchored;
         }
 
         public void JoinAtmosphere(AtmosDeviceComponent component)
@@ -59,7 +60,7 @@ namespace Content.Server.Atmos.Piping.EntitySystems
 
             component.LastProcess = _gameTiming.CurTime;
 
-            RaiseLocalEvent(component.Owner.Uid, new AtmosDeviceEnabledEvent(), false);
+            RaiseLocalEvent(component.Owner, new AtmosDeviceEnabledEvent(), false);
         }
 
         public void LeaveAtmosphere(AtmosDeviceComponent component)
@@ -79,7 +80,7 @@ namespace Content.Server.Atmos.Piping.EntitySystems
             }
 
             component.LastProcess = TimeSpan.Zero;
-            RaiseLocalEvent(component.Owner.Uid, new AtmosDeviceDisabledEvent(), false);
+            RaiseLocalEvent(component.Owner, new AtmosDeviceDisabledEvent(), false);
         }
 
         public void RejoinAtmosphere(AtmosDeviceComponent component)
@@ -104,7 +105,7 @@ namespace Content.Server.Atmos.Piping.EntitySystems
             if (!component.RequireAnchored)
                 return;
 
-            if(component.Owner.Transform.Anchored)
+            if (args.Anchored)
                 JoinAtmosphere(component);
             else
                 LeaveAtmosphere(component);
@@ -127,7 +128,7 @@ namespace Content.Server.Atmos.Piping.EntitySystems
             var time = _gameTiming.CurTime;
             foreach (var device in _joinedDevices)
             {
-                RaiseLocalEvent(device.Owner.Uid, _updateEvent, false);
+                RaiseLocalEvent(device.Owner, _updateEvent, false);
                 device.LastProcess = time;
             }
         }

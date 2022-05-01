@@ -1,12 +1,14 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Content.Server.Access.Systems;
 using Content.Shared.Cargo;
+using Robust.Shared.GameObjects;
 using Robust.Shared.Localization;
 
 namespace Content.Server.Cargo
 {
-    public class CargoOrderDatabase
+    public sealed class CargoOrderDatabase
     {
         private readonly Dictionary<int, CargoOrderData> _orders = new();
         private int _orderNumber = 0;
@@ -84,7 +86,7 @@ namespace Content.Server.Cargo
         ///     Approves an order in the database.
         /// </summary>
         /// <param name="order">The order to be approved.</param>
-        public bool ApproveOrder(int orderNumber)
+        public bool ApproveOrder(string approver, int orderNumber)
         {
             if (CurrentOrderSize == MaxOrderSize ||
                 !_orders.TryGetValue(orderNumber, out var order) ||
@@ -104,6 +106,8 @@ namespace Content.Server.Cargo
             }
 
             order.Approved = true;
+            order.Approver = approver;
+
             CurrentOrderSize += order.Amount;
             return true;
         }

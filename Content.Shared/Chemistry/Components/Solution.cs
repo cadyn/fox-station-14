@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Content.Shared.Chemistry.Reagent;
+using Content.Shared.FixedPoint;
 using Robust.Shared.GameObjects;
 using Robust.Shared.IoC;
 using Robust.Shared.Maths;
@@ -21,20 +22,32 @@ namespace Content.Shared.Chemistry.Components
     /// </summary>
     [Serializable, NetSerializable]
     [DataDefinition]
-    public partial class Solution : IEnumerable<Solution.ReagentQuantity>, ISerializationHooks
+    public sealed partial class Solution : IEnumerable<Solution.ReagentQuantity>, ISerializationHooks
     {
         // Most objects on the station hold only 1 or 2 reagents
         [ViewVariables]
         [DataField("reagents")]
         public List<ReagentQuantity> Contents = new(2);
-        
+
         /// <summary>
         ///     The calculated total volume of all reagents in the solution (ex. Total volume of liquid in beaker).
         /// </summary>
         [ViewVariables]
-        public ReagentUnit TotalVolume { get; set; }
+        public FixedPoint2 TotalVolume { get; set; }
+
+        /// <summary>
+        ///     The temperature of the reagents in the solution.
+        /// </summary>
+        [ViewVariables(VVAccess.ReadWrite)]
+        [DataField("temperature")]
+        public float Temperature { get; set; } = 293.15f;
 
         public Color Color => GetColor();
+
+        /// <summary>
+        ///     The name of this solution, if it is contained in some <see cref="SolutionContainerManagerComponent"/>
+        /// </summary>
+        public string? Name;
 
         /// <summary>
         ///     Constructs an empty solution (ex. an empty beaker).
@@ -46,14 +59,14 @@ namespace Content.Shared.Chemistry.Components
         /// </summary>
         /// <param name="reagentId">The prototype ID of the reagent to add.</param>
         /// <param name="quantity">The quantity in milli-units.</param>
-        public Solution(string reagentId, ReagentUnit quantity)
+        public Solution(string reagentId, FixedPoint2 quantity)
         {
             AddReagent(reagentId, quantity);
         }
 
         void ISerializationHooks.AfterDeserialization()
         {
-            TotalVolume = ReagentUnit.Zero;
+            TotalVolume = FixedPoint2.Zero;
             Contents.ForEach(reagent => TotalVolume += reagent.Quantity);
         }
 
@@ -62,7 +75,7 @@ namespace Content.Shared.Chemistry.Components
             return ContainsReagent(reagentId, out _);
         }
 
-        public bool ContainsReagent(string reagentId, out ReagentUnit quantity)
+        public bool ContainsReagent(string reagentId, out FixedPoint2 quantity)
         {
             foreach (var reagent in Contents)
             {
@@ -73,7 +86,7 @@ namespace Content.Shared.Chemistry.Components
                 }
             }
 
-            quantity = ReagentUnit.New(0);
+            quantity = FixedPoint2.New(0);
             return false;
         }
 
@@ -93,11 +106,16 @@ namespace Content.Shared.Chemistry.Components
         /// </summary>
         /// <param name="reagentId">The prototype ID of the reagent to add.</param>
         /// <param name="quantity">The quantity in milli-units.</param>
-        public void AddReagent(string reagentId, ReagentUnit quantity)
+        public void AddReagent(string reagentId, FixedPoint2 quantity, float? temperature = null)
         {
             if (quantity <= 0)
                 return;
+            if (!IoCManager.Resolve<IPrototypeManager>().TryIndex(reagentId, out ReagentPrototype? proto))
+                proto = new ReagentPrototype();
 
+            var actualTemp = temperature ?? Temperature;
+            var oldThermalEnergy = Temperature * GetHeatCapacity();
+            var addedThermalEnergy = (float) quantity * proto.SpecificHeat * actualTemp;
             for (var i = 0; i < Contents.Count; i++)
             {
                 var reagent = Contents[i];
@@ -105,12 +123,16 @@ namespace Content.Shared.Chemistry.Components
                     continue;
 
                 Contents[i] = new ReagentQuantity(reagentId, reagent.Quantity + quantity);
+
                 TotalVolume += quantity;
+                ThermalEnergy = oldThermalEnergy + addedThermalEnergy;
                 return;
             }
 
             Contents.Add(new ReagentQuantity(reagentId, quantity));
+
             TotalVolume += quantity;
+            ThermalEnergy = oldThermalEnergy + addedThermalEnergy;
         }
 
         /// <summary>
@@ -139,7 +161,7 @@ namespace Content.Shared.Chemistry.Components
         /// </summary>
         /// <param name="reagentId">The prototype ID of the reagent to add.</param>
         /// <returns>The quantity in milli-units.</returns>
-        public ReagentUnit GetReagentQuantity(string reagentId)
+        public FixedPoint2 GetReagentQuantity(string reagentId)
         {
             for (var i = 0; i < Contents.Count; i++)
             {
@@ -147,43 +169,51 @@ namespace Content.Shared.Chemistry.Components
                     return Contents[i].Quantity;
             }
 
-            return ReagentUnit.New(0);
+            return FixedPoint2.New(0);
         }
 
-        public void RemoveReagent(string reagentId, ReagentUnit quantity)
+        /// <summary>
+        ///     Attempts to remove an amount of reagent from the solution.
+        /// </summary>
+        /// <param name="reagentId">The reagent to be removed.</param>
+        /// <param name="quantity">The amount of reagent to remove.</param>
+        /// <returns>How much reagent was actually removed. Zero if the reagent is not present on the solution.</returns>
+        public FixedPoint2 RemoveReagent(string reagentId, FixedPoint2 quantity)
         {
             if(quantity <= 0)
-                return;
+                return FixedPoint2.Zero;
 
             for (var i = 0; i < Contents.Count; i++)
             {
                 var reagent = Contents[i];
+
                 if(reagent.ReagentId != reagentId)
                     continue;
 
                 var curQuantity = reagent.Quantity;
-
                 var newQuantity = curQuantity - quantity;
+
                 if (newQuantity <= 0)
                 {
                     Contents.RemoveSwap(i);
                     TotalVolume -= curQuantity;
-                }
-                else
-                {
-                    Contents[i] = new ReagentQuantity(reagentId, newQuantity);
-                    TotalVolume -= quantity;
+                    return curQuantity;
                 }
 
-                return;
+                Contents[i] = new ReagentQuantity(reagentId, newQuantity);
+                TotalVolume -= quantity;
+                return quantity;
             }
+
+            // Reagent is not on the solution...
+            return FixedPoint2.Zero;
         }
 
         /// <summary>
         /// Remove the specified quantity from this solution.
         /// </summary>
         /// <param name="quantity">The quantity of this solution to remove</param>
-        public void RemoveSolution(ReagentUnit quantity)
+        public void RemoveSolution(FixedPoint2 quantity)
         {
             if(quantity <= 0)
                 return;
@@ -214,10 +244,10 @@ namespace Content.Shared.Chemistry.Components
         public void RemoveAllSolution()
         {
             Contents.Clear();
-            TotalVolume = ReagentUnit.New(0);
+            TotalVolume = FixedPoint2.New(0);
         }
 
-        public Solution SplitSolution(ReagentUnit quantity)
+        public Solution SplitSolution(FixedPoint2 quantity)
         {
             if (quantity <= 0)
                 return new Solution();
@@ -232,25 +262,42 @@ namespace Content.Shared.Chemistry.Components
             }
 
             newSolution = new Solution();
-            var newTotalVolume = ReagentUnit.New(0);
+            var newTotalVolume = FixedPoint2.New(0);
+            var newHeatCapacity = 0.0d;
             var remainingVolume = TotalVolume;
+            var prototypeManager = IoCManager.Resolve<IPrototypeManager>();
 
-            for (var i = 0; i < Contents.Count; i++)
+            for (var i = Contents.Count - 1; i >= 0; i--)
             {
+                if (remainingVolume == FixedPoint2.Zero)
+                    // shouldn't happen, but it can if someone, somehow has a reagent with 0-quantity in a solution.
+                    break;
+
                 var reagent = Contents[i];
                 var ratio = (remainingVolume - quantity).Double() / remainingVolume.Double();
+                if(!prototypeManager.TryIndex(reagent.ReagentId, out ReagentPrototype? proto))
+                    proto = new ReagentPrototype();
+
                 remainingVolume -= reagent.Quantity;
 
                 var newQuantity = reagent.Quantity * ratio;
                 var splitQuantity = reagent.Quantity - newQuantity;
 
-                Contents[i] = new ReagentQuantity(reagent.ReagentId, newQuantity);
-                newSolution.Contents.Add(new ReagentQuantity(reagent.ReagentId, splitQuantity));
+                if (newQuantity > 0)
+                    Contents[i] = new ReagentQuantity(reagent.ReagentId, newQuantity);
+                else
+                    Contents.RemoveAt(i);
+
+                if (splitQuantity > 0)
+                    newSolution.Contents.Add(new ReagentQuantity(reagent.ReagentId, splitQuantity));
+
                 newTotalVolume += splitQuantity;
+                newHeatCapacity += (float) splitQuantity * proto.SpecificHeat;
                 quantity -= splitQuantity;
             }
 
             newSolution.TotalVolume = newTotalVolume;
+            newSolution.Temperature = Temperature;
             TotalVolume -= newTotalVolume;
 
             return newSolution;
@@ -258,6 +305,8 @@ namespace Content.Shared.Chemistry.Components
 
         public void AddSolution(Solution otherSolution)
         {
+            var oldThermalEnergy = Temperature * GetHeatCapacity();
+            var addedThermalEnergy = otherSolution.Temperature * otherSolution.GetHeatCapacity();
             for (var i = 0; i < otherSolution.Contents.Count; i++)
             {
                 var otherReagent = otherSolution.Contents[i];
@@ -281,6 +330,7 @@ namespace Content.Shared.Chemistry.Components
             }
 
             TotalVolume += otherSolution.TotalVolume;
+            ThermalEnergy = oldThermalEnergy + addedThermalEnergy;
         }
 
         private Color GetColor()
@@ -291,7 +341,7 @@ namespace Content.Shared.Chemistry.Components
             }
 
             Color mixColor = default;
-            var runningTotalQuantity = ReagentUnit.New(0);
+            var runningTotalQuantity = FixedPoint2.New(0);
             var protoManager = IoCManager.Resolve<IPrototypeManager>();
 
             foreach (var reagent in Contents)
@@ -317,27 +367,34 @@ namespace Content.Shared.Chemistry.Components
 
         public Solution Clone()
         {
-            var volume = ReagentUnit.New(0);
+            var volume = FixedPoint2.New(0);
+            var heatCapacity = 0.0d;
             var newSolution = new Solution();
+            var prototypeManager = IoCManager.Resolve<IPrototypeManager>();
 
             for (var i = 0; i < Contents.Count; i++)
             {
                 var reagent = Contents[i];
+                if (!prototypeManager.TryIndex(reagent.ReagentId, out ReagentPrototype? proto))
+                    proto = new ReagentPrototype();
+
                 newSolution.Contents.Add(reagent);
                 volume += reagent.Quantity;
+                heatCapacity += (float) reagent.Quantity * proto.SpecificHeat;
             }
 
             newSolution.TotalVolume = volume;
+            newSolution.Temperature = Temperature;
             return newSolution;
         }
 
-        public void DoEntityReaction(IEntity entity, ReactionMethod method)
+        public void DoEntityReaction(EntityUid uid, ReactionMethod method)
         {
-            var chemistry = EntitySystem.Get<ChemistrySystem>();
+            var chemistry = EntitySystem.Get<ReactiveSystem>();
 
             foreach (var (reagentId, quantity) in Contents.ToArray())
             {
-                chemistry.ReactionEntity(entity, method, reagentId, quantity, this);
+                chemistry.ReactionEntity(uid, method, reagentId, quantity, this);
             }
         }
 
@@ -348,9 +405,9 @@ namespace Content.Shared.Chemistry.Components
             [DataField("ReagentId", customTypeSerializer:typeof(PrototypeIdSerializer<ReagentPrototype>))]
             public readonly string ReagentId;
             [DataField("Quantity")]
-            public readonly ReagentUnit Quantity;
+            public readonly FixedPoint2 Quantity;
 
-            public ReagentQuantity(string reagentId, ReagentUnit quantity)
+            public ReagentQuantity(string reagentId, FixedPoint2 quantity)
             {
                 ReagentId = reagentId;
                 Quantity = quantity;
@@ -364,7 +421,7 @@ namespace Content.Shared.Chemistry.Components
 
             public int CompareTo(ReagentQuantity other) { return Quantity.Float().CompareTo(other.Quantity.Float()); }
 
-            public void Deconstruct(out string reagentId, out ReagentUnit quantity)
+            public void Deconstruct(out string reagentId, out FixedPoint2 quantity)
             {
                 reagentId = ReagentId;
                 quantity = Quantity;

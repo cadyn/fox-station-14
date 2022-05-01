@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Content.Shared.AnthroSystem;
 using Robust.Shared.IoC;
 using Robust.Shared.Maths;
+using Robust.Shared.Random;
 using Robust.Shared.Random;
 using Robust.Shared.Serialization;
 using Robust.Shared.Serialization.Manager.Attributes;
@@ -14,7 +15,7 @@ namespace Content.Shared.CharacterAppearance
     // Major changes here to mimic how HumanoidCharacterProfile
     // deals with collections.
     [Serializable, NetSerializable]
-    public class HumanoidCharacterAppearance : ICharacterAppearance
+    public sealed class HumanoidCharacterAppearance : ICharacterAppearance
     {
         private readonly List<AnthroMarking> _markings;
 

@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Threading;
-using Content.Shared.Interaction.Helpers;
-using Content.Shared.Physics;
+using Content.Shared.FixedPoint;
 using Robust.Shared.GameObjects;
-
-// ReSharper disable UnassignedReadonlyField
 
 namespace Content.Server.DoAfter
 {
@@ -53,6 +50,11 @@ namespace Content.Server.DoAfter
         public float MovementThreshold { get; set; }
 
         public bool BreakOnDamage { get; set; }
+
+        /// <summary>
+        ///     Threshold for user damage
+        /// </summary>
+        public FixedPoint2 DamageThreshold { get; set; }
         public bool BreakOnStun { get; set; }
 
         /// <summary>
@@ -99,14 +101,6 @@ namespace Content.Server.DoAfter
         public object? BroadcastFinishedEvent { get; set; }
 
         public DoAfterEventArgs(
-            IEntity user,
-            float delay,
-            CancellationToken cancelToken = default,
-            IEntity? target = null) : this(user.Uid, delay, cancelToken, target?.Uid ?? null)
-        {
-        }
-
-        public DoAfterEventArgs(
             EntityUid user,
             float delay,
             CancellationToken cancelToken = default,
@@ -117,6 +111,7 @@ namespace Content.Server.DoAfter
             CancelToken = cancelToken;
             Target = target;
             MovementThreshold = 0.1f;
+            DamageThreshold = 0;
 
             if (Target == null)
             {

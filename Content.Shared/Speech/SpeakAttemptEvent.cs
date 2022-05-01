@@ -2,13 +2,13 @@
 
 namespace Content.Shared.Speech
 {
-    public class SpeakAttemptEvent : CancellableEntityEventArgs
+    public sealed class SpeakAttemptEvent : CancellableEntityEventArgs
     {
-        public SpeakAttemptEvent(IEntity entity)
+        public SpeakAttemptEvent(EntityUid uid)
         {
-            Entity = entity;
+            Uid = uid;
         }
 
-        public IEntity Entity { get; }
+        public EntityUid Uid { get; }
     }
 }

@@ -1,14 +1,16 @@
 ﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Content.Client.Clickable;
 using Content.Server.GameTicking;
 using NUnit.Framework;
+using Robust.Client.Graphics;
 using Robust.Server.GameObjects;
+using Robust.Shared;
 using Robust.Shared.GameObjects;
 using Robust.Shared.IoC;
 using Robust.Shared.Map;
 using Robust.Shared.Maths;
-using Robust.Shared.Timing;
 
 namespace Content.IntegrationTests.Tests
 {
@@ -27,7 +29,13 @@ namespace Content.IntegrationTests.Tests
         [OneTimeSetUp]
         public async Task Setup()
         {
-            (_client, _server) = await StartConnectedServerClientPair();
+            (_client, _server) = await StartConnectedServerClientPair(serverOptions: new ServerContentIntegrationOption()
+            {
+                CVarOverrides =
+                {
+                    [CVars.NetPVS.Name] = "false"
+                }
+            });
         }
 
         [Parallelizable(ParallelScope.None)]
@@ -60,22 +68,18 @@ namespace Content.IntegrationTests.Tests
         [TestCase("ClickTestRotatingCornerInvisibleNoRot", 0.25f, 0.25f, DirSouthEastJustShy, 1, ExpectedResult = true)]
         public async Task<bool> Test(string prototype, float clickPosX, float clickPosY, double angle, float scale)
         {
-            Vector2? worldPos = null;
             EntityUid entity = default;
             var clientEntManager = _client.ResolveDependency<IEntityManager>();
             var serverEntManager = _server.ResolveDependency<IEntityManager>();
+            var eyeManager = _client.ResolveDependency<IEyeManager>();
             var mapManager = _server.ResolveDependency<IMapManager>();
-            var gameTicker = _server.ResolveDependency<IEntitySystemManager>().GetEntitySystem<GameTicker>();
 
             await _server.WaitPost(() =>
             {
-                var gridEnt = mapManager.GetGrid(gameTicker.DefaultGridId).GridEntityId;
-                worldPos = serverEntManager.GetEntity(gridEnt).Transform.WorldPosition;
-
-                var ent = serverEntManager.SpawnEntity(prototype, new EntityCoordinates(gridEnt, 0f, 0f));
-                ent.Transform.LocalRotation = angle;
-                ent.GetComponent<SpriteComponent>().Scale = (scale, scale);
-                entity = ent.Uid;
+                var ent = serverEntManager.SpawnEntity(prototype, GetMainEntityCoordinates(mapManager));
+                serverEntManager.GetComponent<TransformComponent>(ent).WorldRotation = angle;
+                serverEntManager.GetComponent<SpriteComponent>(ent).Scale = (scale, scale);
+                entity = ent;
             });
 
             // Let client sync up.
@@ -85,10 +89,13 @@ namespace Content.IntegrationTests.Tests
 
             await _client.WaitPost(() =>
             {
-                var ent = clientEntManager.GetEntity(entity);
-                var clickable = ent.GetComponent<ClickableComponent>();
+                // these tests currently all assume player eye is 0
+                eyeManager.CurrentEye.Rotation = 0;
 
-                hit = clickable.CheckClick((clickPosX, clickPosY) + worldPos!.Value, out _, out _);
+                var pos = clientEntManager.GetComponent<TransformComponent>(entity).WorldPosition;
+                var clickable = clientEntManager.GetComponent<ClickableComponent>(entity);
+
+                hit = clickable.CheckClick((clickPosX, clickPosY) + pos, out _, out _);
             });
 
             await _server.WaitPost(() =>

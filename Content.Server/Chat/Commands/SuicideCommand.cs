@@ -1,35 +1,42 @@
 using System.Linq;
 using Content.Server.Act;
-using Content.Server.Administration;
+using Content.Server.Administration.Logs;
 using Content.Server.Chat.Managers;
 using Content.Server.GameTicking;
 using Content.Server.Hands.Components;
-using Content.Server.Items;
 using Content.Server.Players;
 using Content.Server.Popups;
+using Content.Shared.Administration;
 using Content.Shared.Damage;
 using Content.Shared.Damage.Prototypes;
+using Content.Shared.Database;
+using Content.Shared.Item;
 using Content.Shared.Popups;
+using Content.Shared.Tag;
 using Robust.Server.Player;
 using Robust.Shared.Console;
 using Robust.Shared.Enums;
 using Robust.Shared.GameObjects;
 using Robust.Shared.IoC;
 using Robust.Shared.Localization;
+using Robust.Shared.Map;
 using Robust.Shared.Prototypes;
+using Content.Shared.MobState.Components;
 
 namespace Content.Server.Chat.Commands
 {
     [AnyCommand]
-    internal class SuicideCommand : IConsoleCommand
+    internal sealed class SuicideCommand : IConsoleCommand
     {
+        [Dependency] private readonly IEntityManager _entities = default!;
+
         public string Command => "suicide";
 
         public string Description => Loc.GetString("suicide-command-description");
 
         public string Help => Loc.GetString("suicide-command-help-text");
 
-        private void DealDamage(ISuicideAct suicide, IChatManager chat, IEntity target)
+        private void DealDamage(ISuicideAct suicide, IChatManager chat, EntityUid target)
         {
             var kind = suicide.Suicide(target, chat);
             if (kind != SuicideKind.Special)
@@ -51,7 +58,7 @@ namespace Content.Server.Chat.Commands
                         _ => prototypeManager.Index<DamageTypePrototype>("Blunt")
                     },
                 200);
-                EntitySystem.Get<DamageableSystem>().TryChangeDamage(target.Uid, damage, true);
+                EntitySystem.Get<DamageableSystem>().TryChangeDamage(target, damage, true);
             }
         }
 
@@ -64,29 +71,48 @@ namespace Content.Server.Chat.Commands
                 return;
             }
 
-            if (player.Status != SessionStatus.InGame)
+            if (player.Status != SessionStatus.InGame || player.AttachedEntity == null)
                 return;
 
             var chat = IoCManager.Resolve<IChatManager>();
             var mind = player.ContentData()?.Mind;
-            var owner = mind?.OwnedComponent?.Owner;
 
             // This check also proves mind not-null for at the end when the mob is ghosted.
-            if (owner == null)
+            if (mind?.OwnedComponent?.Owner is not {Valid: true} owner)
             {
                 shell.WriteLine("You don't have a mind!");
+                return;
+            }
+
+            //Checks to see if the player is dead.
+            if(_entities.TryGetComponent<MobStateComponent>(owner, out var mobState) && mobState.IsDead())
+            {
+                shell.WriteLine(Loc.GetString("suicide-command-already-dead"));
+                return;
+            }
+
+            //Checks to see if the CannotSuicide tag exits, ghosts instead.
+            if(EntitySystem.Get<TagSystem>().HasTag(owner, "CannotSuicide"))
+            {
+                if (!EntitySystem.Get<GameTicker>().OnGhostAttempt(mind, true))
+                {
+                    shell?.WriteLine("You can't ghost right now.");
+                    return;
+                }
                 return;
             }
 
             //TODO: needs to check if the mob is actually alive
             //TODO: maybe set a suicided flag to prevent resurrection?
 
+            EntitySystem.Get<AdminLogSystem>().Add(LogType.Suicide,
+                $"{_entities.ToPrettyString(player.AttachedEntity.Value):player} is committing suicide");
+
             // Held item suicide
-            var handsComponent = owner.GetComponent<HandsComponent>();
-            var itemComponent = handsComponent.GetActiveHand;
-            if (itemComponent != null)
+            if (_entities.TryGetComponent(owner, out HandsComponent handsComponent)
+                && handsComponent.ActiveHandEntity is EntityUid item)
             {
-                var suicide = itemComponent.Owner.GetAllComponents<ISuicideAct>().FirstOrDefault();
+                var suicide = _entities.GetComponents<ISuicideAct>(item).FirstOrDefault();
 
                 if (suicide != null)
                 {
@@ -94,16 +120,17 @@ namespace Content.Server.Chat.Commands
                     return;
                 }
             }
+
             // Get all entities in range of the suicider
-            var entities = IoCManager.Resolve<IEntityLookup>().GetEntitiesInRange(owner, 1, LookupFlags.Approximate | LookupFlags.IncludeAnchored).ToArray();
+            var entities = EntitySystem.Get<EntityLookupSystem>().GetEntitiesInRange(owner, 1, LookupFlags.Approximate | LookupFlags.Anchored).ToArray();
 
             if (entities.Length > 0)
             {
                 foreach (var entity in entities)
                 {
-                    if (entity.HasComponent<ItemComponent>())
+                    if (_entities.HasComponent<SharedItemComponent>(entity))
                         continue;
-                    var suicide = entity.GetAllComponents<ISuicideAct>().FirstOrDefault();
+                    var suicide = _entities.GetComponents<ISuicideAct>(entity).FirstOrDefault();
                     if (suicide != null)
                     {
                         DealDamage(suicide, chat, owner);
@@ -120,7 +147,7 @@ namespace Content.Server.Chat.Commands
             owner.PopupMessage(selfMessage);
 
             DamageSpecifier damage = new(IoCManager.Resolve<IPrototypeManager>().Index<DamageTypePrototype>("Bloodloss"), 200);
-            EntitySystem.Get<DamageableSystem>().TryChangeDamage(owner.Uid, damage, true);
+            EntitySystem.Get<DamageableSystem>().TryChangeDamage(owner, damage, true);
 
             // Prevent the player from returning to the body.
             // Note that mind cannot be null because otherwise owner would be null.

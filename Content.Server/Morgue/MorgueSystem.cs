@@ -1,13 +1,14 @@
 using Content.Server.Morgue.Components;
+using Content.Shared.Morgue;
+using Content.Shared.Examine;
+using Content.Shared.Database;
 using Content.Shared.Verbs;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Localization;
 
 namespace Content.Server.Morgue
 {
     [UsedImplicitly]
-    public class MorgueSystem : EntitySystem
+    public sealed class MorgueSystem : EntitySystem
     {
 
         private float _accumulatedFrameTime;
@@ -16,38 +17,71 @@ namespace Content.Server.Morgue
         {
             base.Initialize();
 
-            SubscribeLocalEvent<CrematoriumEntityStorageComponent, GetAlternativeVerbsEvent>(AddCremateVerb);
-            SubscribeLocalEvent<BodyBagEntityStorageComponent, GetAlternativeVerbsEvent>(AddRemoveLabelVerb);
+            SubscribeLocalEvent<CrematoriumEntityStorageComponent, GetVerbsEvent<AlternativeVerb>>(AddCremateVerb);
+            SubscribeLocalEvent<CrematoriumEntityStorageComponent, ExaminedEvent>(OnCrematoriumExamined);
+            SubscribeLocalEvent<MorgueEntityStorageComponent, ExaminedEvent>(OnMorgueExamined);
         }
 
-        private void AddCremateVerb(EntityUid uid, CrematoriumEntityStorageComponent component, GetAlternativeVerbsEvent args)
+        private void AddCremateVerb(EntityUid uid, CrematoriumEntityStorageComponent component, GetVerbsEvent<AlternativeVerb> args)
         {
             if (!args.CanAccess || !args.CanInteract || component.Cooking || component.Open)
                 return;
 
-            Verb verb = new();
+            AlternativeVerb verb = new();
             verb.Text = Loc.GetString("cremate-verb-get-data-text");
             // TODO VERB ICON add flame/burn symbol?
             verb.Act = () => component.TryCremate();
+            verb.Impact = LogImpact.Medium; // could be a body? or evidence? I dunno.
             args.Verbs.Add(verb);
         }
 
-        /// <summary>
-        ///     This adds the "remove label" verb to the list of verbs. Yes, this is a stupid function name, but it's
-        ///     consistent with other get-verb event handlers.
-        /// </summary>
-        private void AddRemoveLabelVerb(EntityUid uid, BodyBagEntityStorageComponent component, GetAlternativeVerbsEvent args)
+        private void OnCrematoriumExamined(EntityUid uid, CrematoriumEntityStorageComponent component, ExaminedEvent args)
         {
-            if (args.Hands == null || !args.CanAccess || !args.CanInteract || component.LabelContainer?.ContainedEntity == null)
+            if (!TryComp<AppearanceComponent>(uid, out var appearance))
                 return;
 
-            Verb verb = new();
-            verb.Text = Loc.GetString("remove-label-verb-get-data-text");
-            // TODO VERB ICON Add cancel/X icon? or maybe just use the pick-up or eject icon?
-            verb.Act = () => component.RemoveLabel(args.User);
-            args.Verbs.Add(verb);
+            if (args.IsInDetailsRange)
+            {
+                if (appearance.TryGetData(CrematoriumVisuals.Burning, out bool isBurning) && isBurning)
+                {
+                    args.PushMarkup(Loc.GetString("crematorium-entity-storage-component-on-examine-details-is-burning", ("owner", uid)));
+                }
+
+                if (appearance.TryGetData(MorgueVisuals.HasContents, out bool hasContents) && hasContents)
+                {
+                    args.PushMarkup(Loc.GetString("crematorium-entity-storage-component-on-examine-details-has-contents"));
+                }
+                else
+                {
+                    args.PushMarkup(Loc.GetString("crematorium-entity-storage-component-on-examine-details-empty"));
+                }
+            }
         }
 
+        private void OnMorgueExamined(EntityUid uid, MorgueEntityStorageComponent component, ExaminedEvent args)
+        {
+            if (!TryComp<AppearanceComponent>(uid, out var appearance)) return;
+
+            if (args.IsInDetailsRange)
+            {
+                if (appearance.TryGetData(MorgueVisuals.HasSoul, out bool hasSoul) && hasSoul)
+                {
+                    args.PushMarkup(Loc.GetString("morgue-entity-storage-component-on-examine-details-body-has-soul"));
+                }
+                else if (appearance.TryGetData(MorgueVisuals.HasMob, out bool hasMob) && hasMob)
+                {
+                    args.PushMarkup(Loc.GetString("morgue-entity-storage-component-on-examine-details-body-has-no-soul"));
+                }
+                else if (appearance.TryGetData(MorgueVisuals.HasContents, out bool hasContents) && hasContents)
+                {
+                    args.PushMarkup(Loc.GetString("morgue-entity-storage-component-on-examine-details-has-contents"));
+                }
+                else
+                {
+                    args.PushMarkup(Loc.GetString("morgue-entity-storage-component-on-examine-details-empty"));
+                }
+            }
+        }
         public override void Update(float frameTime)
         {
             _accumulatedFrameTime += frameTime;

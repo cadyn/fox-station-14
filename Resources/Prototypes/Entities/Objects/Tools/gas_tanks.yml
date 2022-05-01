@@ -6,6 +6,8 @@
   - type: Sprite
     sprite: Objects/Tanks/generic.rsi
     state: icon
+  - type: ActivatableUI
+    key: enum.SharedGasTankUiKey.Key
   - type: UserInterface
     interfaces:
     - key: enum.SharedGasTankUiKey.Key
@@ -13,18 +15,23 @@
   - type: Clothing
     size: 15
     sprite: Objects/Tanks/generic.rsi
-    QuickEquip: false
+    quickEquip: false
   - type: GasTank
-  - type: ItemActions
-    actions:
-    - actionType: ToggleInternals
+    toggleAction:
+      name: action-name-internals-toggle
+      description: action-description-internals-toggle
+      icon: Interface/Actions/internal0.png
+      iconOn: Interface/Actions/internal1.png
+      event: !type:ToggleActionEvent
+  - type: Explosive
+    explosionType: Default
+    maxIntensity: 20
 
 - type: entity
   parent: GasTankBase
   id: OxygenTank
   name: oxygen tank
-  description: A tank of oxygen.
-#  suffix: ent-gas-tank-suffix-empty
+  description: A tank of oxygen, this one is blue.
   components:
   - type: Sprite
     sprite: Objects/Tanks/oxygen.rsi
@@ -37,13 +44,13 @@
     sprite: Objects/Tanks/oxygen.rsi
     Slots:
     - Back
+    - suitStorage
 
 - type: entity
   parent: OxygenTank
   id: YellowOxygenTank
   name: oxygen tank
   description: A tank of oxygen. This one is in yellow.
-#  suffix: ent-gas-tank-suffix-empty
   components:
   - type: Sprite
     sprite: Objects/Tanks/yellow.rsi
@@ -51,13 +58,13 @@
     sprite: Objects/Tanks/yellow.rsi
     Slots:
     - Back
+    - suitStorage
 
 - type: entity
   parent: OxygenTank
   id: RedOxygenTank
   name: oxygen tank
   description: A tank of oxygen. This one is in red.
-#  suffix: ent-gas-tank-suffix-empty
   components:
   - type: Sprite
     sprite: Objects/Tanks/red.rsi
@@ -65,20 +72,20 @@
     sprite: Objects/Tanks/red.rsi
     Slots:
     - Back
+    - suitStorage
 
 - type: entity
   parent: OxygenTank
   id: EmergencyOxygenTank
-  name: extended-capacity emergency oxygen tank
+  name: emergency oxygen tank
   description: Used for emergencies. Contains very little oxygen, so try to conserve it until you actually need it.
-#  suffix: ent-gas-tank-suffix-empty
   components:
   - type: Sprite
     sprite: Objects/Tanks/emergency.rsi
   - type: GasTank
     outputPressure: 21.27825
     air:
-      volume: 2
+      volume: 3
       temperature: 293.15
   - type: Clothing
     size: 10
@@ -86,16 +93,17 @@
     Slots:
     - Pocket
     - Belt
+    - suitStorage
 
 - type: entity
   parent: EmergencyOxygenTank
   id: ExtendedEmergencyOxygenTank
-  name: double emergency oxygen tank
+  name: extended-capacity emergency oxygen tank
   description: Used for emergencies. Contains little oxygen, so try to conserve it until you actually need it.
-#  suffix: ent-gas-tank-suffix-empty
   components:
   - type: Sprite
     sprite: Objects/Tanks/emergency_yellow.rsi
+    netsync: false
   - type: GasTank
     outputPressure: 21.27825
     air:
@@ -107,18 +115,19 @@
     Slots:
     - Pocket
     - Belt
+    - suitStorage
 
 - type: entity
   parent: ExtendedEmergencyOxygenTank
   id: DoubleEmergencyOxygenTank
-#  suffix: ent-gas-tank-suffix-empty
+  name: double emergency oxygen tank
   components:
   - type: Sprite
     sprite: Objects/Tanks/emergency_double.rsi
   - type: GasTank
     outputPressure: 21.27825
     air:
-      volume: 10
+      volume: 12
       temperature: 293.15
   - type: Clothing
     size: 10
@@ -126,13 +135,13 @@
     Slots:
     - Pocket
     - Belt
+    - suitStorage
 
 - type: entity
   parent: GasTankBase
   id: AirTank
   name: air tank
   description: Mixed anyone?
-#  suffix: ent-gas-tank-suffix-empty
   components:
     - type: Sprite
       sprite: Objects/Tanks/generic.rsi
@@ -145,13 +154,13 @@
       sprite: Objects/Tanks/generic.rsi
       Slots:
         - Back
+        - suitStorage
 
 - type: entity
   parent: GasTankBase
   id: PlasmaTank
   name: plasma tank
   description: Contains dangerous plasma. Do not inhale. Extremely flammable.
-#  suffix: ent-gas-tank-suffix-empty
   components:
     - type: Sprite
       sprite: Objects/Tanks/plasma.rsi
@@ -165,3 +174,4 @@
       sprite: Objects/Tanks/plasma.rsi
       Slots:
         - Belt
+        - suitStorage

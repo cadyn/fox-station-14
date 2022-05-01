@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using JetBrains.Annotations;
 using Robust.Shared.GameObjects;
@@ -17,15 +17,9 @@ namespace Content.Shared.Acts
         void OnDestroy(DestructionEventArgs eventArgs);
     }
 
-    public class DestructionEventArgs : EntityEventArgs
-    {
-        public IEntity Owner { get; set; } = default!;
-    }
+    public sealed class DestructionEventArgs : EntityEventArgs { }
 
-    public class BreakageEventArgs : EventArgs
-    {
-        public IEntity Owner { get; set; } = default!;
-    }
+    public sealed class BreakageEventArgs : EntityEventArgs { }
 
     public interface IBreakAct
     {
@@ -35,75 +29,33 @@ namespace Content.Shared.Acts
         void OnBreak(BreakageEventArgs eventArgs);
     }
 
-    public interface IExAct
-    {
-        /// <summary>
-        /// Called when explosion reaches the entity
-        /// </summary>
-        void OnExplosion(ExplosionEventArgs eventArgs);
-    }
-
-    public class ExplosionEventArgs : EventArgs
-    {
-        public EntityCoordinates Source { get; set; }
-        public IEntity Target { get; set; } = default!;
-        public ExplosionSeverity Severity { get; set; }
-    }
-
     [UsedImplicitly]
     public sealed class ActSystem : EntitySystem
     {
-        public void HandleDestruction(IEntity owner)
+        public void HandleDestruction(EntityUid owner)
         {
-            var eventArgs = new DestructionEventArgs
-            {
-                Owner = owner
-            };
+            var eventArgs = new DestructionEventArgs();
 
-            var destroyActs = owner.GetAllComponents<IDestroyAct>().ToList();
+            RaiseLocalEvent(owner, eventArgs, false);
+            var destroyActs = EntityManager.GetComponents<IDestroyAct>(owner).ToList();
 
             foreach (var destroyAct in destroyActs)
             {
                 destroyAct.OnDestroy(eventArgs);
             }
 
-            owner.QueueDelete();
+            QueueDel(owner);
         }
 
-        public void HandleExplosion(EntityCoordinates source, IEntity target, ExplosionSeverity severity)
+        public void HandleBreakage(EntityUid owner)
         {
-            var eventArgs = new ExplosionEventArgs
-            {
-                Source = source,
-                Target = target,
-                Severity = severity
-            };
-            var exActs = target.GetAllComponents<IExAct>().ToList();
-
-            foreach (var exAct in exActs)
-            {
-                exAct.OnExplosion(eventArgs);
-            }
-        }
-
-        public void HandleBreakage(IEntity owner)
-        {
-            var eventArgs = new BreakageEventArgs
-            {
-                Owner = owner,
-            };
-            var breakActs = owner.GetAllComponents<IBreakAct>().ToList();
+            var eventArgs = new BreakageEventArgs();
+            RaiseLocalEvent(owner, eventArgs, false);
+            var breakActs = EntityManager.GetComponents<IBreakAct>(owner).ToList();
             foreach (var breakAct in breakActs)
             {
                 breakAct.OnBreak(eventArgs);
             }
         }
-    }
-
-    public enum ExplosionSeverity
-    {
-        Light,
-        Heavy,
-        Destruction,
     }
 }

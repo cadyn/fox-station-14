@@ -1,19 +1,18 @@
 - type: entity
   id: CartridgeCapBase
   name: cartridge (cap)
-  parent: BaseItem
+  parent: BaseCartridge
   abstract: true
   components:
   - type: Ammo
     caliber: Cap
   - type: Sprite
     netsync: false
-    directional: true
+    noRot: false
     sprite: Objects/Weapons/Guns/Ammunition/Casings/ammo_casing.rsi
     layers:
     - state: base
       map: ["enum.AmmoVisualLayers.Base"]
-    drawdepth: FloorObjects
 
 - type: entity
   id: CartridgeCap

@@ -1,28 +1,21 @@
-using System.Collections.Generic;
 using Content.Server.Radio.Components;
 using Content.Server.Radio.EntitySystems;
 using Content.Shared.Chat;
-using Content.Shared.Examine;
 using Robust.Server.GameObjects;
 using Robust.Shared.Containers;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Network;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.Utility;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Server.Headset
 {
     [RegisterComponent]
     [ComponentReference(typeof(IRadio))]
     [ComponentReference(typeof(IListen))]
-    public class HeadsetComponent : Component, IListen, IRadio, IExamine
+#pragma warning disable 618
+    public sealed class HeadsetComponent : Component, IListen, IRadio
+#pragma warning restore 618
     {
+        [Dependency] private readonly IEntityManager _entMan = default!;
         [Dependency] private readonly IServerNetManager _netManager = default!;
-
-        public override string Name => "Headset";
 
         private RadioSystem _radioSystem = default!;
 
@@ -31,7 +24,7 @@ namespace Content.Server.Headset
 
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("broadcastChannel")]
-        private int BroadcastFrequency { get; set; } = 1459;
+        public int BroadcastFrequency { get; set; } = 1459;
 
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("listenRange")]
@@ -48,48 +41,39 @@ namespace Content.Server.Headset
             _radioSystem = EntitySystem.Get<RadioSystem>();
         }
 
-        public bool CanListen(string message, IEntity source)
+        public bool CanListen(string message, EntityUid source)
         {
             return RadioRequested;
         }
 
-        public void Receive(string message, int channel, IEntity source)
+        public void Receive(string message, int channel, EntityUid source)
         {
             if (Owner.TryGetContainer(out var container))
             {
-                if (!container.Owner.TryGetComponent(out ActorComponent? actor))
+                if (!_entMan.TryGetComponent(container.Owner, out ActorComponent? actor))
                     return;
 
                 var playerChannel = actor.PlayerSession.ConnectedClient;
 
-                var msg = _netManager.CreateNetMessage<MsgChatMessage>();
+                var msg = new MsgChatMessage();
 
                 msg.Channel = ChatChannel.Radio;
                 msg.Message = message;
                 //Square brackets are added here to avoid issues with escaping
-                msg.MessageWrap = Loc.GetString("chat-radio-message-wrap", ("channel", $"\\[{channel}\\]"), ("name", source.Name));
+                msg.MessageWrap = Loc.GetString("chat-radio-message-wrap", ("channel", $"\\[{channel}\\]"), ("name", _entMan.GetComponent<MetaDataComponent>(source).EntityName));
                 _netManager.ServerSendMessage(msg, playerChannel);
             }
         }
 
-        public void Listen(string message, IEntity speaker)
+        public void Listen(string message, EntityUid speaker)
         {
             Broadcast(message, speaker);
         }
 
-        public void Broadcast(string message, IEntity speaker)
+        public void Broadcast(string message, EntityUid speaker)
         {
             _radioSystem.SpreadMessage(this, speaker, message, BroadcastFrequency);
             RadioRequested = false;
-        }
-
-        public void Examine(FormattedMessage message, bool inDetailsRange)
-        {
-            message.AddText(Loc.GetString("examine-radio-frequency", ("frequency", BroadcastFrequency)));
-            message.AddText("\n");
-            message.AddText(Loc.GetString("examine-headset"));
-            message.AddText("\n");
-            message.AddText(Loc.GetString("examine-headset-chat-prefix", ("prefix", ";")));
         }
     }
 }

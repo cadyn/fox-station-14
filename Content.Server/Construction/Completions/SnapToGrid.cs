@@ -10,18 +10,18 @@ namespace Content.Server.Construction.Completions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class SnapToGrid : IGraphAction
+    public sealed class SnapToGrid : IGraphAction
     {
         [DataField("southRotation")] public bool SouthRotation { get; private set; } = false;
 
-        public async Task PerformAction(IEntity entity, IEntity? user)
+        public void PerformAction(EntityUid uid, EntityUid? userUid, IEntityManager entityManager)
         {
-            if (entity.Deleted) return;
+            var transform = entityManager.GetComponent<TransformComponent>(uid);
+            transform.Coordinates = transform.Coordinates.SnapToGrid(entityManager);
 
-            entity.SnapToGrid();
             if (SouthRotation)
             {
-                entity.Transform.LocalRotation = Angle.Zero;
+                transform.LocalRotation = Angle.Zero;
             }
         }
     }

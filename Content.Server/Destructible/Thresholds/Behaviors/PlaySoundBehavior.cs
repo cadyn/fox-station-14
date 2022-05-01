@@ -10,16 +10,16 @@ namespace Content.Server.Destructible.Thresholds.Behaviors
 {
     [Serializable]
     [DataDefinition]
-    public class PlaySoundBehavior : IThresholdBehavior
+    public sealed class PlaySoundBehavior : IThresholdBehavior
     {
         /// <summary>
         ///     Sound played upon destruction.
         /// </summary>
         [DataField("sound", required: true)] public SoundSpecifier Sound { get; set; } = default!;
 
-        public void Execute(IEntity owner, DestructibleSystem system)
+        public void Execute(EntityUid owner, DestructibleSystem system)
         {
-            var pos = owner.Transform.Coordinates;
+            var pos = system.EntityManager.GetComponent<TransformComponent>(owner).Coordinates;
             SoundSystem.Play(Filter.Pvs(pos), Sound.GetSound(), pos, AudioHelpers.WithVariation(0.125f));
         }
     }

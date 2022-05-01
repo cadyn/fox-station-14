@@ -11,7 +11,7 @@ namespace Content.Server.Traitor.Uplink
     /// <summary>
     ///     Contains and controls all items in traitors uplink shop
     /// </summary>
-    public class UplinkListingSytem : EntitySystem
+    public sealed class UplinkListingSytem : EntitySystem
     {
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
 
@@ -24,7 +24,7 @@ namespace Content.Server.Traitor.Uplink
             foreach (var item in _prototypeManager.EnumeratePrototypes<UplinkStoreListingPrototype>())
             {
                 var newListing = new UplinkListingData(item.ListingName, item.ItemId,
-                    item.Price, item.Category, item.Description);
+                    item.Price, item.Category, item.Description, item.Icon);
 
                 RegisterUplinkListing(newListing);
             }

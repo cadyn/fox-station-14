@@ -1,40 +1,42 @@
 ﻿using System;
 using System.Collections.Generic;
-using Content.Server.Items;
+using Content.Server.MachineLinking.Components;
 using Content.Server.MachineLinking.Events;
-using Content.Server.MachineLinking.Models;
 using Content.Server.Power.Components;
-using Content.Server.Stunnable;
-using Content.Server.Stunnable.Components;
+using Content.Server.Recycling;
+using Content.Server.Recycling.Components;
 using Content.Shared.Conveyor;
-using Content.Shared.MachineLinking;
+using Content.Shared.Item;
 using Content.Shared.Movement.Components;
 using Content.Shared.Popups;
-using Content.Shared.Stunnable;
-using Robust.Server.GameObjects;
 using Robust.Shared.Containers;
 using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 using Robust.Shared.Localization;
 using Robust.Shared.Maths;
 using Robust.Shared.Physics;
 
 namespace Content.Server.Conveyor
 {
-    public class ConveyorSystem : EntitySystem
+    public sealed class ConveyorSystem : EntitySystem
     {
-        [Dependency] private StunSystem _stunSystem = default!;
-        [Dependency] private IEntityLookup _entityLookup = default!;
-
+        [Dependency] private RecyclerSystem _recycler = default!;
         public override void Initialize()
         {
             base.Initialize();
 
+            SubscribeLocalEvent<ConveyorComponent, ComponentInit>(OnInit);
             SubscribeLocalEvent<ConveyorComponent, SignalReceivedEvent>(OnSignalReceived);
-            SubscribeLocalEvent<ConveyorComponent, PortDisconnectedEvent>(OnPortDisconnected);
-            SubscribeLocalEvent<ConveyorComponent, LinkAttemptEvent>(OnLinkAttempt);
             SubscribeLocalEvent<ConveyorComponent, PowerChangedEvent>(OnPowerChanged);
         }
+
+        private void OnInit(EntityUid uid, ConveyorComponent component, ComponentInit args)
+        {
+            var receiver = EnsureComp<SignalReceiverComponent>(uid);
+            foreach (string port in Enum.GetNames<ConveyorState>())
+                if (!receiver.Inputs.ContainsKey(port))
+                    receiver.AddPort(port);
+        }
+
 
         private void OnPowerChanged(EntityUid uid, ConveyorComponent component, PowerChangedEvent args)
         {
@@ -43,9 +45,9 @@ namespace Content.Server.Conveyor
 
         private void UpdateAppearance(ConveyorComponent component)
         {
-            if (component.Owner.TryGetComponent<AppearanceComponent>(out var appearance))
+            if (EntityManager.TryGetComponent<AppearanceComponent?>(component.Owner, out var appearance))
             {
-                if (component.Owner.TryGetComponent<ApcPowerReceiverComponent>(out var receiver) && receiver.Powered)
+                if (EntityManager.TryGetComponent<ApcPowerReceiverComponent?>(component.Owner, out var receiver) && receiver.Powered)
                 {
                     appearance.SetData(ConveyorVisuals.State, component.State);
                 }
@@ -56,41 +58,24 @@ namespace Content.Server.Conveyor
             }
         }
 
-        private void OnLinkAttempt(EntityUid uid, ConveyorComponent component, LinkAttemptEvent args)
-        {
-            if (args.TransmitterComponent.Outputs.GetPort(args.TransmitterPort).Signal is TwoWayLeverSignal signal &&
-                signal != TwoWayLeverSignal.Middle)
-            {
-                args.Cancel();
-                _stunSystem.TryParalyze(uid, TimeSpan.FromSeconds(2f));
-                component.Owner.PopupMessage(args.Attemptee, Loc.GetString("conveyor-component-failed-link"));
-            }
-        }
-
-        private void OnPortDisconnected(EntityUid uid, ConveyorComponent component, PortDisconnectedEvent args)
-        {
-            SetState(component, TwoWayLeverSignal.Middle);
-        }
-
         private void OnSignalReceived(EntityUid uid, ConveyorComponent component, SignalReceivedEvent args)
         {
-            switch (args.Port)
-            {
-                case "state":
-                    SetState(component, (TwoWayLeverSignal) args.Value!);
-                    break;
-            }
+            if (Enum.TryParse(args.Port, out ConveyorState state))
+                SetState(component, state);
         }
 
-        private void SetState(ConveyorComponent component, TwoWayLeverSignal signal)
+        private void SetState(ConveyorComponent component, ConveyorState state)
         {
-            component.State = signal switch
+            component.State = state;
+
+            if (TryComp<RecyclerComponent>(component.Owner, out var recycler))
             {
-                TwoWayLeverSignal.Left => ConveyorState.Reversed,
-                TwoWayLeverSignal.Middle => ConveyorState.Off,
-                TwoWayLeverSignal.Right => ConveyorState.Forward,
-                _ => ConveyorState.Off
-            };
+                if (component.State != ConveyorState.Off)
+                    _recycler.EnableRecycler(recycler);
+                else
+                    _recycler.DisableRecycler(recycler);
+            }
+
             UpdateAppearance(component);
         }
 
@@ -101,68 +86,18 @@ namespace Content.Server.Conveyor
                 return false;
             }
 
-            if (component.Owner.TryGetComponent(out ApcPowerReceiverComponent? receiver) &&
+            if (EntityManager.TryGetComponent(component.Owner, out ApcPowerReceiverComponent? receiver) &&
                 !receiver.Powered)
             {
                 return false;
             }
 
-            if (component.Owner.HasComponent<ItemComponent>())
+            if (EntityManager.HasComponent<SharedItemComponent>(component.Owner))
             {
                 return false;
             }
 
             return true;
-        }
-
-        /// <summary>
-        ///     Calculates the angle in which entities on top of this conveyor
-        ///     belt are pushed in
-        /// </summary>
-        /// <returns>
-        ///     The angle when taking into account if the conveyor is reversed
-        /// </returns>
-        public Angle GetAngle(ConveyorComponent component)
-        {
-            var adjustment = component.State == ConveyorState.Reversed ? MathHelper.Pi/2 : -MathHelper.Pi/2;
-            var radians = MathHelper.DegreesToRadians(component.Angle);
-
-            return new Angle(component.Owner.Transform.LocalRotation.Theta + radians + adjustment);
-        }
-
-        public IEnumerable<(IEntity, IPhysBody)> GetEntitiesToMove(ConveyorComponent comp)
-        {
-            //todo uuuhhh cache this
-            foreach (var entity in _entityLookup.GetEntitiesIntersecting(comp.Owner, LookupFlags.Approximate))
-            {
-                if (entity.Deleted)
-                {
-                    continue;
-                }
-
-                if (entity == comp.Owner)
-                {
-                    continue;
-                }
-
-                if (!entity.TryGetComponent(out IPhysBody? physics) ||
-                    physics.BodyType == BodyType.Static || physics.BodyStatus == BodyStatus.InAir || entity.IsWeightless())
-                {
-                    continue;
-                }
-
-                if (entity.HasComponent<IMapGridComponent>())
-                {
-                    continue;
-                }
-
-                if (entity.IsInContainer())
-                {
-                    continue;
-                }
-
-                yield return (entity, physics);
-            }
         }
     }
 }

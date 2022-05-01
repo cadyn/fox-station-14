@@ -19,7 +19,7 @@ using static Robust.Client.UserInterface.Controls.BoxContainer;
 
 namespace Content.Client.Wires.UI
 {
-    public class WiresMenu : BaseWindow
+    public sealed class WiresMenu : BaseWindow
     {
         [Dependency] private readonly IResourceCache _resourceCache = default!;
 
@@ -184,7 +184,7 @@ namespace Content.Client.Wires.UI
                     }),
                     (CloseButton = new TextureButton
                     {
-                        StyleClasses = {SS14Window.StyleClassWindowCloseButton},
+                        StyleClasses = {DefaultWindow.StyleClassWindowCloseButton},
                         VerticalAlignment = VAlignment.Center
                     })
                 }
@@ -370,7 +370,7 @@ namespace Content.Client.Wires.UI
                     return;
                 }
 
-                if (args.RelativePixelPosition.Y > 20 && args.RelativePixelPosition.Y < 60)
+                if (args.RelativePosition.Y > 20 && args.RelativePosition.Y < 60)
                 {
                     WireClicked?.Invoke();
                 }

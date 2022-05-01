@@ -1,31 +1,23 @@
 using System.Linq;
-using System.Threading.Tasks;
-using Content.Server.Hands.Components;
-using Content.Server.Items;
 using Content.Server.NodeContainer;
 using Content.Server.Power.Components;
 using Content.Server.UserInterface;
-using Content.Shared.ActionBlocker;
 using Content.Shared.AME;
-using Content.Shared.Interaction;
-using Content.Shared.Popups;
+using Content.Shared.Hands.EntitySystems;
 using Content.Shared.Sound;
 using Robust.Server.GameObjects;
 using Robust.Shared.Audio;
 using Robust.Shared.Containers;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Localization;
 using Robust.Shared.Player;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Server.AME.Components
 {
     [RegisterComponent]
-    [ComponentReference(typeof(IActivate))]
-    [ComponentReference(typeof(IInteractUsing))]
-    public class AMEControllerComponent : SharedAMEControllerComponent, IActivate, IInteractUsing
+    public sealed class AMEControllerComponent : SharedAMEControllerComponent
     {
+        [Dependency] private readonly IEntityManager _entities = default!;
+        [Dependency] private readonly IEntitySystemManager _sysMan = default!;
+
         [ViewVariables] private BoundUserInterface? UserInterface => Owner.GetUIOrNull(AMEControllerUiKey.Key);
         private bool _injecting;
         [ViewVariables] public bool Injecting => _injecting;
@@ -36,13 +28,13 @@ namespace Content.Server.AME.Components
         [DataField("clickSound")] private SoundSpecifier _clickSound = new SoundPathSpecifier("/Audio/Machines/machine_switch.ogg");
         [DataField("injectSound")] private SoundSpecifier _injectSound = new SoundPathSpecifier("/Audio/Effects/bang.ogg");
 
-        private bool Powered => !Owner.TryGetComponent(out ApcPowerReceiverComponent? receiver) || receiver.Powered;
+        private bool Powered => !_entities.TryGetComponent(Owner, out ApcPowerReceiverComponent? receiver) || receiver.Powered;
 
         [ViewVariables]
         private int _stability = 100;
 
-        private ContainerSlot _jarSlot = default!;
-        [ViewVariables] private bool HasJar => _jarSlot.ContainedEntity != null;
+        public ContainerSlot JarSlot = default!;
+        [ViewVariables] public bool HasJar => JarSlot.ContainedEntity != null;
 
         protected override void Initialize()
         {
@@ -53,24 +45,13 @@ namespace Content.Server.AME.Components
                 UserInterface.OnReceiveMessage += OnUiReceiveMessage;
             }
 
-            Owner.TryGetComponent(out _appearance);
+            _entities.TryGetComponent(Owner, out _appearance);
 
-            Owner.TryGetComponent(out _powerSupplier);
+            _entities.TryGetComponent(Owner, out _powerSupplier);
 
             _injecting = false;
             InjectionAmount = 2;
-            _jarSlot = ContainerHelpers.EnsureContainer<ContainerSlot>(Owner, $"{Name}-fuelJarContainer");
-        }
-
-        public override void HandleMessage(ComponentMessage message, IComponent? component)
-        {
-            base.HandleMessage(message, component);
-            switch (message)
-            {
-                case PowerChangedMessage powerChanged:
-                    OnPowerChanged(powerChanged);
-                    break;
-            }
+            JarSlot = ContainerHelpers.EnsureContainer<ContainerSlot>(Owner, $"{Name}-fuelJarContainer");
         }
 
         internal void OnUpdate(float frameTime)
@@ -87,11 +68,10 @@ namespace Content.Server.AME.Components
                 return;
             }
 
-            var jar = _jarSlot.ContainedEntity;
-            if (jar is null)
+            if (JarSlot.ContainedEntity is not {Valid: true} jar)
                 return;
 
-            jar.TryGetComponent<AMEFuelContainerComponent>(out var fuelJar);
+            _entities.TryGetComponent<AMEFuelContainerComponent?>(jar, out var fuelJar);
             if (fuelJar != null && _powerSupplier != null)
             {
                 var availableInject = fuelJar.FuelAmount >= InjectionAmount ? InjectionAmount : fuelJar.FuelAmount;
@@ -109,35 +89,6 @@ namespace Content.Server.AME.Components
 
         }
 
-        /// <summary>
-        /// Called when you click the owner entity with an empty hand. Opens the UI client-side if possible.
-        /// </summary>
-        /// <param name="args">Data relevant to the event such as the actor which triggered it.</param>
-        void IActivate.Activate(ActivateEventArgs args)
-        {
-            if (!args.User.TryGetComponent(out ActorComponent? actor))
-            {
-                return;
-            }
-
-            if (!args.User.TryGetComponent(out IHandsComponent? hands))
-            {
-                Owner.PopupMessage(args.User, Loc.GetString("ame-controller-component-interact-no-hands-text"));
-                return;
-            }
-
-            var activeHandEntity = hands.GetActiveHand?.Owner;
-            if (activeHandEntity == null)
-            {
-                UserInterface?.Open(actor.PlayerSession);
-            }
-        }
-
-        private void OnPowerChanged(PowerChangedMessage e)
-        {
-            UpdateUserInterface();
-        }
-
         // Used to update core count
         public void OnAMENodeGroupUpdate()
         {
@@ -146,14 +97,13 @@ namespace Content.Server.AME.Components
 
         private AMEControllerBoundUserInterfaceState GetUserInterfaceState()
         {
-            var jar = _jarSlot.ContainedEntity;
-            if (jar == null)
+            if (JarSlot.ContainedEntity is not {Valid: true} jar)
             {
                 return new AMEControllerBoundUserInterfaceState(Powered, IsMasterController(), false, HasJar, 0, InjectionAmount, GetCoreCount());
             }
 
-            var jarcomponent = jar.GetComponent<AMEFuelContainerComponent>();
-            return new AMEControllerBoundUserInterfaceState(Powered, IsMasterController(), _injecting, HasJar, jarcomponent.FuelAmount, InjectionAmount, GetCoreCount());
+            var jarComponent = _entities.GetComponent<AMEFuelContainerComponent>(jar);
+            return new AMEControllerBoundUserInterfaceState(Powered, IsMasterController(), _injecting, HasJar, jarComponent.FuelAmount, InjectionAmount, GetCoreCount());
         }
 
         /// <summary>
@@ -161,17 +111,12 @@ namespace Content.Server.AME.Components
         /// </summary>
         /// <param name="playerEntity">The player entity.</param>
         /// <returns>Returns true if the entity can use the controller, and false if it cannot.</returns>
-        private bool PlayerCanUseController(IEntity playerEntity, bool needsPower = true)
+        private bool PlayerCanUseController(EntityUid playerEntity, bool needsPower = true)
         {
             //Need player entity to check if they are still able to use the dispenser
-            if (playerEntity == null)
+            if (playerEntity == default)
                 return false;
 
-            var actionBlocker = EntitySystem.Get<ActionBlockerSystem>();
-
-            //Check if player can interact in their current state
-            if (!actionBlocker.CanInteract(playerEntity) || !actionBlocker.CanUse(playerEntity))
-                return false;
             //Check if device is powered
             if (needsPower && !Powered)
                 return false;
@@ -179,7 +124,7 @@ namespace Content.Server.AME.Components
             return true;
         }
 
-        private void UpdateUserInterface()
+        public void UpdateUserInterface()
         {
             var state = GetUserInterfaceState();
             UserInterface?.SetState(state);
@@ -192,7 +137,7 @@ namespace Content.Server.AME.Components
         /// <param name="obj">A user interface message from the client.</param>
         private void OnUiReceiveMessage(ServerBoundUserInterfaceMessage obj)
         {
-            if (obj.Session.AttachedEntity == null)
+            if (obj.Session.AttachedEntity is not {Valid: true} player)
             {
                 return;
             }
@@ -204,13 +149,13 @@ namespace Content.Server.AME.Components
                 _ => true,
             };
 
-            if (!PlayerCanUseController(obj.Session.AttachedEntity, needsPower))
+            if (!PlayerCanUseController(player, needsPower))
                 return;
 
             switch (msg.Button)
             {
                 case UiButton.Eject:
-                    TryEject(obj.Session.AttachedEntity);
+                    TryEject(player);
                     break;
                 case UiButton.ToggleInjection:
                     ToggleInjection();
@@ -229,22 +174,18 @@ namespace Content.Server.AME.Components
             ClickSound();
         }
 
-        private void TryEject(IEntity user)
+        private void TryEject(EntityUid user)
         {
             if (!HasJar || _injecting)
                 return;
 
-            var jar = _jarSlot.ContainedEntity;
-            if (jar is null)
+            if (JarSlot.ContainedEntity is not {Valid: true} jar)
                 return;
 
-            _jarSlot.Remove(jar);
+            JarSlot.Remove(jar);
             UpdateUserInterface();
 
-            if (!user.TryGetComponent<HandsComponent>(out var hands) || !jar.TryGetComponent<ItemComponent>(out var item))
-                return;
-            if (hands.CanPutInHand(item))
-                hands.PutInHand(item);
+            _sysMan.GetEntitySystem<SharedHandsSystem>().PickupOrDrop(user, jar);
         }
 
         private void ToggleInjection()
@@ -285,7 +226,7 @@ namespace Content.Server.AME.Components
 
         private AMENodeGroup? GetAMENodeGroup()
         {
-            Owner.TryGetComponent(out NodeContainerComponent? nodeContainer);
+            _entities.TryGetComponent(Owner, out NodeContainerComponent? nodeContainer);
 
             var engineNodeGroup = nodeContainer?.Nodes.Values
             .Select(node => node.NodeGroup)
@@ -327,43 +268,6 @@ namespace Content.Server.AME.Components
         private void InjectSound(bool overloading)
         {
             SoundSystem.Play(Filter.Pvs(Owner), _injectSound.GetSound(), Owner, AudioParams.Default.WithVolume(overloading ? 10f : 0f));
-        }
-
-        async Task<bool> IInteractUsing.InteractUsing(InteractUsingEventArgs args)
-        {
-            if (!args.User.TryGetComponent(out IHandsComponent? hands))
-            {
-                Owner.PopupMessage(args.User, Loc.GetString("ame-controller-component-interact-using-no-hands-text"));
-                return true;
-            }
-
-            if (hands.GetActiveHand == null)
-            {
-                Owner.PopupMessage(args.User, Loc.GetString("ame-controller-component-interact-using-nothing-in-hands-text"));
-                return false;
-            }
-
-            var activeHandEntity = hands.GetActiveHand.Owner;
-            if (activeHandEntity.TryGetComponent<AMEFuelContainerComponent>(out var fuelContainer))
-            {
-                if (HasJar)
-                {
-                    Owner.PopupMessage(args.User, Loc.GetString("ame-controller-component-interact-using-already-has-jar"));
-                }
-
-                else
-                {
-                    _jarSlot.Insert(activeHandEntity);
-                    Owner.PopupMessage(args.User, Loc.GetString("ame-controller-component-interact-using-success"));
-                    UpdateUserInterface();
-                }
-            }
-            else
-            {
-                Owner.PopupMessage(args.User, Loc.GetString("ame-controller-component-interact-using-fail"));
-            }
-
-            return true;
         }
     }
 

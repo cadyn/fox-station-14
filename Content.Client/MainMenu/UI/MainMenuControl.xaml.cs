@@ -12,15 +12,8 @@ using Robust.Shared.Localization;
 namespace Content.Client.MainMenu.UI
 {
     [GenerateTypedNameReferences]
-    public partial class MainMenuControl : Control
+    public sealed partial class MainMenuControl : Control
         {
-            public LineEdit UserNameBox => UsernameBoxProtected;
-            public Button JoinPublicServerButton => JoinPublicServerButtonProtected;
-            public LineEdit AddressBox => AddressBoxProtected;
-            public Button DirectConnectButton => DirectConnectButtonProtected;
-            public Button OptionsButton => OptionsButtonProtected;
-            public Button QuitButton => QuitButtonProtected;
-
             public MainMenuControl(IResourceCache resCache, IConfigurationManager configMan)
             {
                 RobustXamlLoader.Load(this);
@@ -36,12 +29,7 @@ namespace Content.Client.MainMenu.UI
                 Logo.Texture = logoTexture;
 
                 var currentUserName = configMan.GetCVar(CVars.PlayerName);
-                UserNameBox.Text = currentUserName;
-
-#if !FULL_RELEASE
-                JoinPublicServerButton.Disabled = true;
-                JoinPublicServerButton.ToolTip = Loc.GetString("main-menu-join-public-server-button-tooltip");
-#endif
+                UsernameBox.Text = currentUserName;
 
                 LayoutContainer.SetAnchorPreset(VersionLabel, LayoutContainer.LayoutPreset.BottomRight);
                 LayoutContainer.SetGrowHorizontal(VersionLabel, LayoutContainer.GrowDirection.Begin);

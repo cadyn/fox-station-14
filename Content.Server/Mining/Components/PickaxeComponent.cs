@@ -1,18 +1,38 @@
+using System.Threading;
+using Content.Shared.Damage;
 using Content.Shared.Sound;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Server.Mining.Components
 {
+    /// <summary>
+    ///     When interacting with an <see cref="MineableComponent"/> allows it to spawn entities.
+    /// </summary>
     [RegisterComponent]
-    public class PickaxeComponent : Component
+    public sealed class PickaxeComponent : Component
     {
-        public override string Name => "Pickaxe";
-
-        [DataField("miningSound")]
+        [ViewVariables(VVAccess.ReadWrite)]
+        [DataField("sound")]
         public SoundSpecifier MiningSound { get; set; } = new SoundPathSpecifier("/Audio/Items/Mining/pickaxe.ogg");
 
-        [DataField("miningSpeedMultiplier")]
-        public float MiningSpeedMultiplier { get; set; } = 1f;
+        [ViewVariables(VVAccess.ReadWrite)]
+        [DataField("timeMultiplier")]
+        public float MiningTimeMultiplier { get; set; } = 1f;
+
+        /// <summary>
+        ///     What damage should be given to objects when
+        ///     mined using a pickaxe?
+        /// </summary>
+        [DataField("damage", required: true)]
+        public DamageSpecifier Damage { get; set; } = default!;
+
+        /// <summary>
+        ///     How many entities can this pickaxe mine at once?
+        /// </summary>
+        [ViewVariables(VVAccess.ReadWrite)]
+        [DataField("maxEntities")]
+        public int MaxMiningEntities = 1;
+
+        [ViewVariables]
+        public readonly Dictionary<EntityUid, CancellationTokenSource> MiningEntities = new();
     }
 }

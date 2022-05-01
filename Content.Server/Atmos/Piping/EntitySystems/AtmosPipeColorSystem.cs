@@ -1,12 +1,11 @@
 using Content.Server.Atmos.Piping.Components;
 using Content.Shared.Atmos.Piping;
-using Robust.Server.GameObjects;
 using Robust.Shared.GameObjects;
 using Robust.Shared.Maths;
 
 namespace Content.Server.Atmos.Piping.EntitySystems
 {
-    public class AtmosPipeColorSystem : EntitySystem
+    public sealed class AtmosPipeColorSystem : EntitySystem
     {
         public override void Initialize()
         {

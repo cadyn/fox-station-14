@@ -9,7 +9,7 @@ using Robust.Shared.ViewVariables;
 namespace Content.Server.Destructible.Thresholds
 {
     [DataDefinition]
-    public class DamageThreshold
+    public sealed class DamageThreshold
     {
         [DataField("behaviors")]
         private List<IThresholdBehavior> _behaviors = new();
@@ -84,14 +84,14 @@ namespace Content.Server.Destructible.Thresholds
         ///     An instance of <see cref="DestructibleSystem"/> to get dependency and
         ///     system references from, if relevant.
         /// </param>
-        public void Execute(IEntity owner, DestructibleSystem system)
+        public void Execute(EntityUid owner, DestructibleSystem system, IEntityManager entityManager)
         {
             Triggered = true;
 
             foreach (var behavior in Behaviors)
             {
                 // The owner has been deleted. We stop execution of behaviors here.
-                if (owner.Deleted)
+                if (!entityManager.EntityExists(owner))
                     return;
 
                 behavior.Execute(owner, system);

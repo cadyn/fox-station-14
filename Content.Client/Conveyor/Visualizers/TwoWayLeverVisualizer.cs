@@ -1,13 +1,14 @@
-﻿using Content.Shared.MachineLinking;
+using Content.Shared.MachineLinking;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
 using Robust.Shared.GameObjects;
+using Robust.Shared.IoC;
 using Robust.Shared.Serialization.Manager.Attributes;
 
 namespace Content.Client.Conveyor.Visualizers
 {
     [UsedImplicitly]
-    public class TwoWayLeverVisualizer : AppearanceVisualizer
+    public sealed class TwoWayLeverVisualizer : AppearanceVisualizer
     {
         [DataField("state_forward")]
         private string? _stateForward;
@@ -20,29 +21,31 @@ namespace Content.Client.Conveyor.Visualizers
 
         private void ChangeState(AppearanceComponent appearance)
         {
-            if (!appearance.Owner.TryGetComponent(out ISpriteComponent? sprite))
+            var entities = IoCManager.Resolve<IEntityManager>();
+            if (!entities.TryGetComponent(appearance.Owner, out ISpriteComponent? sprite))
             {
                 return;
             }
 
-            appearance.TryGetData(TwoWayLeverVisuals.State, out TwoWayLeverSignal state);
+            appearance.TryGetData(TwoWayLeverVisuals.State, out TwoWayLeverState state);
 
             var texture = state switch
             {
-                TwoWayLeverSignal.Middle => _stateOff,
-                TwoWayLeverSignal.Right => _stateForward,
-                TwoWayLeverSignal.Left => _stateReversed,
+                TwoWayLeverState.Middle => _stateOff,
+                TwoWayLeverState.Right => _stateForward,
+                TwoWayLeverState.Left => _stateReversed,
                 _ => _stateOff
             };
 
             sprite.LayerSetState(0, texture);
         }
 
-        public override void InitializeEntity(IEntity entity)
+        public override void InitializeEntity(EntityUid entity)
         {
             base.InitializeEntity(entity);
 
-            var appearance = entity.EnsureComponent<AppearanceComponent>();
+            var entities = IoCManager.Resolve<IEntityManager>();
+            var appearance = entities.EnsureComponent<ClientAppearanceComponent>(entity);
             ChangeState(appearance);
         }
 

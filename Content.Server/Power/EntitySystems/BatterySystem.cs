@@ -1,23 +1,46 @@
 using Content.Server.Power.Components;
+using Content.Shared.Examine;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
 
 namespace Content.Server.Power.EntitySystems
 {
     [UsedImplicitly]
-    public class BatterySystem : EntitySystem
+    public sealed class BatterySystem : EntitySystem
     {
         public override void Initialize()
         {
             base.Initialize();
 
+            SubscribeLocalEvent<ExaminableBatteryComponent, ExaminedEvent>(OnExamine);
+
             SubscribeLocalEvent<NetworkBatteryPreSync>(PreSync);
             SubscribeLocalEvent<NetworkBatteryPostSync>(PostSync);
         }
 
+        private void OnExamine(EntityUid uid, ExaminableBatteryComponent component, ExaminedEvent args)
+        {
+            if (!TryComp<BatteryComponent>(uid, out var batteryComponent))
+                return;
+            if (args.IsInDetailsRange)
+            {
+                var effectiveMax = batteryComponent.MaxCharge;
+                if (effectiveMax == 0)
+                    effectiveMax = 1;
+                var chargeFraction = batteryComponent.CurrentCharge / effectiveMax;
+                var chargePercentRounded = (int) (chargeFraction * 100);
+                args.PushMarkup(
+                    Loc.GetString(
+                        "examinable-battery-component-examine-detail",
+                        ("percent", chargePercentRounded),
+                        ("markupPercentColor", "green")
+                    )
+                );
+            }
+        }
+
         private void PreSync(NetworkBatteryPreSync ev)
         {
-            foreach (var (bat, netBat) in EntityManager.EntityQuery<BatteryComponent, PowerNetworkBatteryComponent>())
+            foreach (var (netBat, bat) in EntityManager.EntityQuery<PowerNetworkBatteryComponent, BatteryComponent>())
             {
                 netBat.NetworkBattery.Capacity = bat.MaxCharge;
                 netBat.NetworkBattery.CurrentStorage = bat.CurrentCharge;
@@ -26,7 +49,7 @@ namespace Content.Server.Power.EntitySystems
 
         private void PostSync(NetworkBatteryPostSync ev)
         {
-            foreach (var (bat, netBat) in EntityManager.EntityQuery<BatteryComponent, PowerNetworkBatteryComponent>())
+            foreach (var (netBat, bat) in EntityManager.EntityQuery<PowerNetworkBatteryComponent, BatteryComponent>())
             {
                 bat.CurrentCharge = netBat.NetworkBattery.CurrentStorage;
             }
@@ -34,9 +57,11 @@ namespace Content.Server.Power.EntitySystems
 
         public override void Update(float frameTime)
         {
-            foreach (var comp in EntityManager.EntityQuery<BatteryComponent>())
+            foreach (var (comp, batt) in EntityManager.EntityQuery<BatterySelfRechargerComponent, BatteryComponent>())
             {
-                comp.OnUpdate(frameTime);
+                if (!comp.AutoRecharge) continue;
+                if (batt.IsFullyCharged) continue;
+                batt.CurrentCharge += comp.AutoRechargeRate * frameTime;
             }
         }
     }

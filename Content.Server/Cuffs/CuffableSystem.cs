@@ -1,15 +1,12 @@
 using Content.Server.Cuffs.Components;
 using Content.Server.Hands.Components;
-using Content.Shared.Hands.Components;
 using Content.Shared.ActionBlocker;
 using Content.Shared.Cuffs;
+using Content.Shared.Hands;
+using Content.Shared.MobState.Components;
 using Content.Shared.Popups;
 using Content.Shared.Verbs;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Localization;
-using Robust.Shared.IoC;
-using Content.Shared.MobState;
 using Robust.Shared.Player;
 
 namespace Content.Server.Cuffs
@@ -27,10 +24,10 @@ namespace Content.Server.Cuffs
             SubscribeLocalEvent<HandCountChangedEvent>(OnHandCountChanged);
             SubscribeLocalEvent<UncuffAttemptEvent>(OnUncuffAttempt);
 
-            SubscribeLocalEvent<CuffableComponent, GetOtherVerbsEvent>(AddUncuffVerb);
+            SubscribeLocalEvent<CuffableComponent, GetVerbsEvent<Verb>>(AddUncuffVerb);
         }
 
-        private void AddUncuffVerb(EntityUid uid, CuffableComponent component, GetOtherVerbsEvent args)
+        private void AddUncuffVerb(EntityUid uid, CuffableComponent component, GetVerbsEvent<Verb> args)
         {
             // Can the user access the cuffs, and is there even anything to uncuff?
             if (!args.CanAccess || component.CuffedHandCount == 0)
@@ -55,7 +52,7 @@ namespace Content.Server.Cuffs
             {
                 return;
             }
-            if (!EntityManager.TryGetEntity(args.User, out var userEntity))
+            if (!EntityManager.EntityExists(args.User))
             {
                 // Should this even be possible?
                 args.Cancel();
@@ -66,7 +63,7 @@ namespace Content.Server.Cuffs
             if (args.User == args.Target)
             {
                 // This UncuffAttemptEvent check should probably be In MobStateSystem, not here?
-                if (userEntity.TryGetComponent<IMobStateComponent>(out var state))
+                if (EntityManager.TryGetComponent<MobStateComponent?>(args.User, out var state))
                 {
                     // Manually check this.
                     if (state.IsIncapacitated())
@@ -83,14 +80,14 @@ namespace Content.Server.Cuffs
             else
             {
                 // Check if the user can interact.
-                if (!_actionBlockerSystem.CanInteract(userEntity))
+                if (!_actionBlockerSystem.CanInteract(args.User, args.Target))
                 {
                     args.Cancel();
                 }
             }
             if (args.Cancelled)
             {
-                _popupSystem.PopupEntity(Loc.GetString("cuffable-component-cannot-interact-message"), args.Target, Filter.Entities(userEntity.Uid));
+                _popupSystem.PopupEntity(Loc.GetString("cuffable-component-cannot-interact-message"), args.Target, Filter.Entities(args.User));
             }
         }
 
@@ -101,11 +98,11 @@ namespace Content.Server.Cuffs
         {
             var owner = message.Sender;
 
-            if (!owner.TryGetComponent(out CuffableComponent? cuffable) ||
+            if (!EntityManager.TryGetComponent(owner, out CuffableComponent? cuffable) ||
                 !cuffable.Initialized) return;
 
             var dirty = false;
-            var handCount = owner.GetComponentOrNull<HandsComponent>()?.Count ?? 0;
+            var handCount = EntityManager.GetComponentOrNull<HandsComponent>(owner)?.Count ?? 0;
 
             while (cuffable.CuffedHandCount > handCount && cuffable.CuffedHandCount > 0)
             {
@@ -115,14 +112,15 @@ namespace Content.Server.Cuffs
                 var entity = container.ContainedEntities[^1];
 
                 container.Remove(entity);
-                entity.Transform.WorldPosition = owner.Transform.WorldPosition;
+                EntityManager.GetComponent<TransformComponent>(entity).WorldPosition = EntityManager.GetComponent<TransformComponent>(owner).WorldPosition;
             }
 
             if (dirty)
             {
                 cuffable.CanStillInteract = handCount > cuffable.CuffedHandCount;
+                _actionBlockerSystem.UpdateCanMove(cuffable.Owner);
                 cuffable.CuffedStateChanged();
-                cuffable.Dirty();
+                Dirty(cuffable);
             }
         }
     }
@@ -131,7 +129,7 @@ namespace Content.Server.Cuffs
     /// Event fired on the User when the User attempts to cuff the Target.
     /// Should generate popups on the User.
     /// </summary>
-    public class UncuffAttemptEvent : CancellableEntityEventArgs
+    public sealed class UncuffAttemptEvent : CancellableEntityEventArgs
     {
         public readonly EntityUid User;
         public readonly EntityUid Target;

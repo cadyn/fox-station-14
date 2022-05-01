@@ -3,6 +3,7 @@ using Content.Client.Message;
 using Content.Client.Stylesheets;
 using Content.Shared.Chemistry.Components;
 using Content.Shared.Chemistry.Reagent;
+using Content.Shared.FixedPoint;
 using Robust.Client.UserInterface;
 using Robust.Client.UserInterface.Controls;
 using Robust.Shared.GameObjects;
@@ -16,10 +17,10 @@ namespace Content.Client.Chemistry.Components
     /// Client behavior for injectors & syringes. Used for item status on injectors
     /// </summary>
     [RegisterComponent]
-    public class InjectorComponent : SharedInjectorComponent, IItemStatus
+    public sealed class InjectorComponent : SharedInjectorComponent, IItemStatus
     {
-        [ViewVariables] private ReagentUnit CurrentVolume { get; set; }
-        [ViewVariables] private ReagentUnit TotalVolume { get; set; }
+        [ViewVariables] private FixedPoint2 CurrentVolume { get; set; }
+        [ViewVariables] private FixedPoint2 TotalVolume { get; set; }
         [ViewVariables] private InjectorToggleMode CurrentMode { get; set; }
         [ViewVariables(VVAccess.ReadWrite)] private bool _uiUpdateNeeded;
 
@@ -55,7 +56,7 @@ namespace Content.Client.Chemistry.Components
                 _label = new RichTextLabel { StyleClasses = { StyleNano.StyleClassItemStatus } };
                 AddChild(_label);
 
-                parent._uiUpdateNeeded = true;
+                Update();
             }
 
             protected override void FrameUpdate(FrameEventArgs args)
@@ -65,7 +66,11 @@ namespace Content.Client.Chemistry.Components
                 {
                     return;
                 }
+                Update();
+            }
 
+            public void Update()
+            {
                 _parent._uiUpdateNeeded = false;
 
                 //Update current volume and injector state

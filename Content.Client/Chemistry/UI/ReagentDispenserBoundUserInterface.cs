@@ -1,11 +1,9 @@
-using System.Collections.Generic;
 using System.Linq;
 using Content.Shared.Chemistry.Dispenser;
+using Content.Shared.Containers.ItemSlots;
 using JetBrains.Annotations;
 using Robust.Client.GameObjects;
 using Robust.Client.UserInterface.Controls;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Localization;
 using static Content.Shared.Chemistry.Dispenser.SharedReagentDispenserComponent;
 
 namespace Content.Client.Chemistry.UI
@@ -14,7 +12,7 @@ namespace Content.Client.Chemistry.UI
     /// Initializes a <see cref="ReagentDispenserWindow"/> and updates it when new server messages are received.
     /// </summary>
     [UsedImplicitly]
-    public class ReagentDispenserBoundUserInterface : BoundUserInterface
+    public sealed class ReagentDispenserBoundUserInterface : BoundUserInterface
     {
         private ReagentDispenserWindow? _window;
         private ReagentDispenserBoundUserInterfaceState? _lastState;
@@ -33,16 +31,13 @@ namespace Content.Client.Chemistry.UI
             base.Open();
 
             //Setup window layout/elements
-            _window = new ReagentDispenserWindow
-            {
-                Title = Loc.GetString("reagent-dispenser-bound-user-interface-title"),
-            };
+            _window = new();
 
             _window.OpenCentered();
             _window.OnClose += Close;
 
             //Setup static button actions.
-            _window.EjectButton.OnPressed += _ => ButtonPressed(UiButton.Eject);
+            _window.EjectButton.OnPressed += _ => SendMessage(new ItemSlotButtonPressedEvent(BeakerSlotId));
             _window.ClearButton.OnPressed += _ => ButtonPressed(UiButton.Clear);
             _window.DispenseButton1.OnPressed += _ => ButtonPressed(UiButton.SetDispenseAmount1);
             _window.DispenseButton5.OnPressed += _ => ButtonPressed(UiButton.SetDispenseAmount5);

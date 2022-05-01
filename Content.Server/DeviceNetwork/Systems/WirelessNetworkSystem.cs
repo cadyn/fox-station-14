@@ -5,7 +5,7 @@ using Robust.Shared.GameObjects;
 namespace Content.Server.DeviceNetwork.Systems
 {
     [UsedImplicitly]
-    public class WirelessNetworkSystem : EntitySystem
+    public sealed class WirelessNetworkSystem : EntitySystem
     {
         public override void Initialize()
         {
@@ -18,13 +18,12 @@ namespace Content.Server.DeviceNetwork.Systems
         /// </summary>
         private void OnBeforePacketSent(EntityUid uid, WirelessNetworkComponent component, BeforePacketSentEvent args)
         {
-            var sender = EntityManager.GetEntity(args.Sender);
+            var ownPosition = args.SenderPosition;
+            var xform = Transform(uid);
 
-            var ownPosition = component.Owner.Transform.WorldPosition;
-            var position = sender.Transform.WorldPosition;
-            var distance = (ownPosition - position).Length;
-
-            if(sender.TryGetComponent<WirelessNetworkComponent>(out var sendingComponent) && distance > sendingComponent.Range)
+            if (xform.MapID != args.SenderTransform.MapID
+                || !TryComp<WirelessNetworkComponent?>(args.Sender, out var sendingComponent)
+                || (ownPosition - xform.WorldPosition).Length > sendingComponent.Range)
             {
                 args.Cancel();
             }

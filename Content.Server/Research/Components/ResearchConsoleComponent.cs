@@ -1,33 +1,23 @@
 using Content.Server.Power.Components;
 using Content.Server.UserInterface;
-using Content.Shared.Audio;
-using Content.Shared.Interaction;
 using Content.Shared.Research.Components;
 using Content.Shared.Research.Prototypes;
 using Content.Shared.Sound;
 using Robust.Server.GameObjects;
 using Robust.Server.Player;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 using Robust.Shared.Player;
 using Robust.Shared.Prototypes;
-using Robust.Shared.Random;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Server.Research.Components
 {
     [RegisterComponent]
-    [ComponentReference(typeof(IActivate))]
-    public class ResearchConsoleComponent : SharedResearchConsoleComponent, IActivate
+    public sealed class ResearchConsoleComponent : SharedResearchConsoleComponent
     {
+        [Dependency] private readonly IEntityManager _entMan = default!;
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
 
-        [DataField("sound")]
-        private SoundSpecifier _soundCollectionName = new SoundCollectionSpecifier("keyboard");
-
-        [ViewVariables] private bool Powered => !Owner.TryGetComponent(out ApcPowerReceiverComponent? receiver) || receiver.Powered;
+        [ViewVariables] private bool Powered => !_entMan.TryGetComponent(Owner, out ApcPowerReceiverComponent? receiver) || receiver.Powered;
 
         [ViewVariables] private BoundUserInterface? UserInterface => Owner.GetUIOrNull(ResearchConsoleUiKey.Key);
 
@@ -47,9 +37,9 @@ namespace Content.Server.Research.Components
 
         private void UserInterfaceOnOnReceiveMessage(ServerBoundUserInterfaceMessage message)
         {
-            if (!Owner.TryGetComponent(out TechnologyDatabaseComponent? database))
+            if (!_entMan.TryGetComponent(Owner, out TechnologyDatabaseComponent? database))
                 return;
-            if (!Owner.TryGetComponent(out ResearchClientComponent? client))
+            if (!_entMan.TryGetComponent(Owner, out ResearchClientComponent? client))
                 return;
             if (!Powered)
                 return;
@@ -90,7 +80,7 @@ namespace Content.Server.Research.Components
 
         private ResearchConsoleBoundInterfaceState GetNewUiState()
         {
-            if (!Owner.TryGetComponent(out ResearchClientComponent? client) ||
+            if (!_entMan.TryGetComponent(Owner, out ResearchClientComponent? client) ||
                 client.Server == null)
                 return new ResearchConsoleBoundInterfaceState(default, default);
 
@@ -98,33 +88,6 @@ namespace Content.Server.Research.Components
             var pointsPerSecond = client.ConnectedToServer ? client.Server.PointsPerSecond : 0;
 
             return new ResearchConsoleBoundInterfaceState(points, pointsPerSecond);
-        }
-
-        /// <summary>
-        ///     Open the user interface on a certain player session.
-        /// </summary>
-        /// <param name="session">Session where the UI will be shown</param>
-        public void OpenUserInterface(IPlayerSession session)
-        {
-            UserInterface?.Open(session);
-        }
-
-        void IActivate.Activate(ActivateEventArgs eventArgs)
-        {
-            if (!eventArgs.User.TryGetComponent(out ActorComponent? actor))
-                return;
-            if (!Powered)
-            {
-                return;
-            }
-
-            OpenUserInterface(actor.PlayerSession);
-            PlayKeyboardSound();
-        }
-
-        private void PlayKeyboardSound()
-        {
-            SoundSystem.Play(Filter.Pvs(Owner), _soundCollectionName.GetSound(), Owner, AudioParams.Default);
         }
     }
 }

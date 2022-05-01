@@ -9,6 +9,9 @@
     tags:
     - Write
     - Crayon
+    - Trash
+  - type: Recyclable
+  - type: SpaceGarbage
   - type: UserInterface
     interfaces:
     - key: enum.CrayonUiKey.Key
@@ -33,7 +36,11 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonWhite
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -52,7 +59,34 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonWhite
+    - Recyclable
+    - Trash
+
+- type: entity
+  parent: Crayon
+  id: CrayonRainbow
+  name: rainbow crayon
+  components:
+  - type: Sprite
+    sprite: Objects/Fun/crayons.rsi
+    state: rainbow
+  - type: Item
+    sprite: Objects/Fun/crayons.rsi
+    size: 1
+    HeldPrefix: rainbow
+  - type: Crayon
+    color: Red
+    selectableColor: true
+    capacity: 30
+  - type: Tag
+    tags:
+    - Write
+    - Crayon
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -71,7 +105,11 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonBlack
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -90,7 +128,11 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonRed
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -109,7 +151,11 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonOrange
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -128,7 +174,11 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonYellow
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -147,7 +197,11 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonGreen
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -166,7 +220,11 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonBlue
+    - Recyclable
+    - Trash
 
 - type: entity
   parent: Crayon
@@ -185,10 +243,14 @@
     capacity: 5
   - type: Tag
     tags:
+    - Write
+    - Crayon
     - CrayonPurple
+    - Recyclable
+    - Trash
 
 - type: entity
-  parent: BaseItem
+  parent: BoxCardboard
   id: CrayonBox
   name: crayon box
   description: "It's a box of crayons."
@@ -201,7 +263,7 @@
     capacity: 7
   - type: Item
     sprite: Objects/Fun/crayons.rsi
-    size: 9999
+    size: 7
     HeldPrefix: box
   - type: StorageFill
     contents:

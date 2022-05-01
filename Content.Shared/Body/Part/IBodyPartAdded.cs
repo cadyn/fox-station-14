@@ -1,4 +1,5 @@
 ﻿using System;
+using Content.Shared.Body.Components;
 using Robust.Shared.GameObjects;
 using Robust.Shared.Serialization;
 
@@ -20,7 +21,7 @@ namespace Content.Shared.Body.Part
 
 
     [Serializable, NetSerializable]
-    public class BodyPartAddedEventArgs : EventArgs
+    public sealed class BodyPartAddedEventArgs : EventArgs
     {
         public BodyPartAddedEventArgs(string slot, SharedBodyPartComponent part)
         {

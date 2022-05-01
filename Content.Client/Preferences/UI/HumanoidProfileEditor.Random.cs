@@ -7,7 +7,7 @@ using Robust.Shared.Random;
 
 namespace Content.Client.Preferences.UI
 {
-    public partial class HumanoidProfileEditor
+    public sealed partial class HumanoidProfileEditor
     {
         private readonly IRobustRandom _random;
         private readonly IPrototypeManager _prototypeManager;
@@ -22,6 +22,8 @@ namespace Content.Client.Preferences.UI
             UpdateNameEdit();
             UpdateHairPickers();
             UpdateEyePickers();
+
+            _skinColor.Value = _random.Next(0, 100);
         }
 
         private void RandomizeName()

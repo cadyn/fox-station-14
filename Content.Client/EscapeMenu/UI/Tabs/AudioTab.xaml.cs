@@ -6,13 +6,12 @@ using Robust.Client.UserInterface.Controls;
 using Robust.Client.UserInterface.XAML;
 using Robust.Shared;
 using Robust.Shared.Configuration;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
+using Range = Robust.Client.UserInterface.Controls.Range;
 
 namespace Content.Client.EscapeMenu.UI.Tabs
 {
     [GenerateTypedNameReferences]
-    public partial class AudioTab : Control
+    public sealed partial class AudioTab : Control
     {
         [Dependency] private readonly IConfigurationManager _cfg = default!;
         [Dependency] private readonly IClydeAudio _clydeAudio = default!;
@@ -22,14 +21,18 @@ namespace Content.Client.EscapeMenu.UI.Tabs
             RobustXamlLoader.Load(this);
             IoCManager.InjectDependencies(this);
 
-            AmbienceCheckBox.Pressed = _cfg.GetCVar(CCVars.AmbienceBasicEnabled);
             LobbyMusicCheckBox.Pressed = _cfg.GetCVar(CCVars.LobbyMusicEnabled);
 
             ApplyButton.OnPressed += OnApplyButtonPressed;
             ResetButton.OnPressed += OnResetButtonPressed;
             MasterVolumeSlider.OnValueChanged += OnMasterVolumeSliderChanged;
-            AmbienceCheckBox.OnToggled += OnAmbienceCheckToggled;
+            MidiVolumeSlider.OnValueChanged += OnMidiVolumeSliderChanged;
+            AmbienceVolumeSlider.OnValueChanged += OnAmbienceVolumeSliderChanged;
+            AmbienceSoundsSlider.OnValueChanged += OnAmbienceSoundsSliderChanged;
             LobbyMusicCheckBox.OnToggled += OnLobbyMusicCheckToggled;
+
+            AmbienceSoundsSlider.MinValue = _cfg.GetCVar(CCVars.MinMaxAmbientSourcesConfigured);
+            AmbienceSoundsSlider.MaxValue = _cfg.GetCVar(CCVars.MaxMaxAmbientSourcesConfigured);
 
             Reset();
         }
@@ -39,19 +42,28 @@ namespace Content.Client.EscapeMenu.UI.Tabs
             ApplyButton.OnPressed -= OnApplyButtonPressed;
             ResetButton.OnPressed -= OnResetButtonPressed;
             MasterVolumeSlider.OnValueChanged -= OnMasterVolumeSliderChanged;
-            AmbienceCheckBox.OnToggled -= OnAmbienceCheckToggled;
+            MidiVolumeSlider.OnValueChanged -= OnMidiVolumeSliderChanged;
+            AmbienceVolumeSlider.OnValueChanged -= OnAmbienceVolumeSliderChanged;
             base.Dispose(disposing);
+        }
+
+        private void OnAmbienceVolumeSliderChanged(Range obj)
+        {
+            UpdateChanges();
+        }
+
+        private void OnAmbienceSoundsSliderChanged(Range obj)
+        {
+            UpdateChanges();
         }
 
         private void OnMasterVolumeSliderChanged(Range range)
         {
-            MasterVolumeLabel.Text =
-                Loc.GetString("ui-options-volume-percent", ("volume", MasterVolumeSlider.Value / 100));
             _clydeAudio.SetMasterVolume(MasterVolumeSlider.Value / 100);
             UpdateChanges();
         }
 
-        private void OnAmbienceCheckToggled(BaseButton.ButtonEventArgs args)
+        private void OnMidiVolumeSliderChanged(Range range)
         {
             UpdateChanges();
         }
@@ -64,7 +76,9 @@ namespace Content.Client.EscapeMenu.UI.Tabs
         private void OnApplyButtonPressed(BaseButton.ButtonEventArgs args)
         {
             _cfg.SetCVar(CVars.AudioMasterVolume, MasterVolumeSlider.Value / 100);
-            _cfg.SetCVar(CCVars.AmbienceBasicEnabled, AmbienceCheckBox.Pressed);
+            _cfg.SetCVar(CVars.MidiVolume, LV100ToDB(MidiVolumeSlider.Value));
+            _cfg.SetCVar(CCVars.AmbienceVolume, LV100ToDB(AmbienceVolumeSlider.Value));
+            _cfg.SetCVar(CCVars.MaxAmbientSources, (int)AmbienceSoundsSlider.Value);
             _cfg.SetCVar(CCVars.LobbyMusicEnabled, LobbyMusicCheckBox.Pressed);
             _cfg.SaveToFile();
             UpdateChanges();
@@ -78,22 +92,46 @@ namespace Content.Client.EscapeMenu.UI.Tabs
         private void Reset()
         {
             MasterVolumeSlider.Value = _cfg.GetCVar(CVars.AudioMasterVolume) * 100;
-            MasterVolumeLabel.Text =
-                Loc.GetString("ui-options-volume-percent", ("volume", MasterVolumeSlider.Value / 100));
-            AmbienceCheckBox.Pressed = _cfg.GetCVar(CCVars.AmbienceBasicEnabled);
+            MidiVolumeSlider.Value = DBToLV100(_cfg.GetCVar(CVars.MidiVolume));
+            AmbienceVolumeSlider.Value = DBToLV100(_cfg.GetCVar(CCVars.AmbienceVolume));
+            AmbienceSoundsSlider.Value = _cfg.GetCVar(CCVars.MaxAmbientSources);
             LobbyMusicCheckBox.Pressed = _cfg.GetCVar(CCVars.LobbyMusicEnabled);
             UpdateChanges();
+        }
+
+        // Note: Rather than moving these functions somewhere, instead switch MidiManager to using linear units rather than dB
+        // Do be sure to rename the setting though
+        private float DBToLV100(float db)
+        {
+            return (MathF.Pow(10, (db / 10)) * 100);
+        }
+
+        private float LV100ToDB(float lv100)
+        {
+            // Saving negative infinity doesn't work, so use -10000000 instead (MidiManager does it)
+            return MathF.Max(-10000000, MathF.Log(lv100 / 100, 10) * 10);
         }
 
         private void UpdateChanges()
         {
             var isMasterVolumeSame =
-                System.Math.Abs(MasterVolumeSlider.Value - _cfg.GetCVar(CVars.AudioMasterVolume) * 100) < 0.01f;
-            var isAmbienceSame = AmbienceCheckBox.Pressed == _cfg.GetCVar(CCVars.AmbienceBasicEnabled);
+                Math.Abs(MasterVolumeSlider.Value - _cfg.GetCVar(CVars.AudioMasterVolume) * 100) < 0.01f;
+            var isMidiVolumeSame =
+                Math.Abs(MidiVolumeSlider.Value - DBToLV100(_cfg.GetCVar(CVars.MidiVolume))) < 0.01f;
+            var isAmbientVolumeSame =
+                Math.Abs(AmbienceVolumeSlider.Value - DBToLV100(_cfg.GetCVar(CCVars.AmbienceVolume))) < 0.01f;
+            var isAmbientSoundsSame = (int)AmbienceSoundsSlider.Value == _cfg.GetCVar(CCVars.MaxAmbientSources);
             var isLobbySame = LobbyMusicCheckBox.Pressed == _cfg.GetCVar(CCVars.LobbyMusicEnabled);
-            var isEverythingSame = isMasterVolumeSame && isAmbienceSame && isLobbySame;
+            var isEverythingSame = isMasterVolumeSame && isMidiVolumeSame && isAmbientVolumeSame && isAmbientSoundsSame && isLobbySame;
             ApplyButton.Disabled = isEverythingSame;
             ResetButton.Disabled = isEverythingSame;
+            MasterVolumeLabel.Text =
+                Loc.GetString("ui-options-volume-percent", ("volume", MasterVolumeSlider.Value / 100));
+            MidiVolumeLabel.Text =
+                Loc.GetString("ui-options-volume-percent", ("volume", MidiVolumeSlider.Value / 100));
+            AmbienceVolumeLabel.Text =
+                Loc.GetString("ui-options-volume-percent", ("volume", AmbienceVolumeSlider.Value / 100));
+            AmbienceSoundsLabel.Text = ((int)AmbienceSoundsSlider.Value).ToString();
         }
     }
 }

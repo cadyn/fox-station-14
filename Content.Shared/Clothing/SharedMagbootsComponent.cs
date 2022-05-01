@@ -1,26 +1,25 @@
-using System;
-using Content.Shared.Movement.Components;
-using Robust.Shared.GameObjects;
+using Content.Shared.Actions;
+using Content.Shared.Actions.ActionTypes;
+using Content.Shared.Movement.EntitySystems;
+using Robust.Shared.Containers;
 using Robust.Shared.GameStates;
 using Robust.Shared.Serialization;
 
 namespace Content.Shared.Clothing
 {
     [NetworkedComponent()]
-    public abstract class SharedMagbootsComponent : Component, IMoveSpeedModifier
+    public abstract class SharedMagbootsComponent : Component
     {
-        public sealed override string Name => "Magboots";
+        [DataField("toggleAction", required: true)]
+        public InstantAction ToggleAction = new();
 
         public abstract bool On { get; set; }
 
-
         protected void OnChanged()
         {
-            MovementSpeedModifierComponent.RefreshItemModifiers(Owner);
+            EntitySystem.Get<SharedActionsSystem>().SetToggled(ToggleAction, On);
+            EntitySystem.Get<ClothingSpeedModifierSystem>().SetClothingSpeedModifierEnabled(Owner, On);
         }
-
-        public float WalkSpeedModifier => On ? 0.85f : 1;
-        public float SprintSpeedModifier => On ? 0.65f : 1;
 
         [Serializable, NetSerializable]
         public sealed class MagbootsComponentState : ComponentState

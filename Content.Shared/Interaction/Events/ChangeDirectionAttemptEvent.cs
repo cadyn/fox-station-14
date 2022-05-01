@@ -1,14 +1,13 @@
-﻿using Robust.Shared.GameObjects;
+using Robust.Shared.GameObjects;
 
-namespace Content.Shared.Interaction.Events
+namespace Content.Shared.Interaction.Events;
+
+public sealed class ChangeDirectionAttemptEvent : CancellableEntityEventArgs
 {
-    public class ChangeDirectionAttemptEvent : CancellableEntityEventArgs
+    public ChangeDirectionAttemptEvent(EntityUid uid)
     {
-        public ChangeDirectionAttemptEvent(IEntity entity)
-        {
-            Entity = entity;
-        }
-
-        public IEntity Entity { get; }
+        Uid = uid;
     }
+
+    public EntityUid Uid { get; }
 }

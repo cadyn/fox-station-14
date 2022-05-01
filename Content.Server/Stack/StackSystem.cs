@@ -1,13 +1,7 @@
-using System;
-using Content.Server.Popups;
-using Content.Shared.Interaction;
 using Content.Shared.Stacks;
+using Content.Shared.Verbs;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Localization;
 using Robust.Shared.Map;
-using Robust.Shared.Maths;
 using Robust.Shared.Player;
 using Robust.Shared.Prototypes;
 
@@ -18,22 +12,35 @@ namespace Content.Server.Stack
     ///     This is a good example for learning how to code in an ECS manner.
     /// </summary>
     [UsedImplicitly]
-    public class StackSystem : SharedStackSystem
+    public sealed class StackSystem : SharedStackSystem
     {
         [Dependency] private readonly IPrototypeManager _prototypeManager = default!;
-        [Dependency] private readonly PopupSystem _popupSystem = default!;
+
+        public static readonly int[] DefaultSplitAmounts = { 1, 5, 10, 20, 30, 50 };
 
         public override void Initialize()
         {
             base.Initialize();
 
-            SubscribeLocalEvent<StackComponent, InteractUsingEvent>(OnStackInteractUsing);
+            SubscribeLocalEvent<StackComponent, GetVerbsEvent<AlternativeVerb>>(OnStackAlternativeInteract);
+        }
+
+        public override void SetCount(EntityUid uid, int amount, SharedStackComponent? component = null)
+        {
+            if (!Resolve(uid, ref component))
+                return;
+
+            base.SetCount(uid, amount, component);
+
+            // Queue delete stack if count reaches zero.
+            if (component.Count <= 0)
+                QueueDel(uid);
         }
 
         /// <summary>
-        ///     Try to split this stack into two. Returns a non-null <see cref="IEntity"/> if successful.
+        ///     Try to split this stack into two. Returns a non-null <see cref="Robust.Shared.GameObjects.EntityUid"/> if successful.
         /// </summary>
-        public IEntity? Split(EntityUid uid, int amount, EntityCoordinates spawnPosition, SharedStackComponent? stack = null)
+        public EntityUid? Split(EntityUid uid, int amount, EntityCoordinates spawnPosition, SharedStackComponent? stack = null)
         {
             if (!Resolve(uid, ref stack))
                 return null;
@@ -41,19 +48,21 @@ namespace Content.Server.Stack
             // Get a prototype ID to spawn the new entity. Null is also valid, although it should rarely be picked...
             var prototype = _prototypeManager.TryIndex<StackPrototype>(stack.StackTypeId, out var stackType)
                 ? stackType.Spawn
-                : stack.Owner.Prototype?.ID ?? null;
+                : Prototype(stack.Owner)?.ID;
 
             // Try to remove the amount of things we want to split from the original stack...
             if (!Use(uid, amount, stack))
                 return null;
 
             // Set the output parameter in the event instance to the newly split stack.
-            var entity = EntityManager.SpawnEntity(prototype, spawnPosition);
+            var entity = Spawn(prototype, spawnPosition);
 
-            if (EntityManager.TryGetComponent(entity.Uid, out SharedStackComponent? stackComp))
+            if (TryComp(entity, out SharedStackComponent? stackComp))
             {
                 // Set the split stack's count.
-                SetCount(entity.Uid, amount, stackComp);
+                SetCount(entity, amount, stackComp);
+                // Don't let people dupe unlimited stacks
+                stackComp.Unlimited = false;
             }
 
             return entity;
@@ -62,60 +71,74 @@ namespace Content.Server.Stack
         /// <summary>
         ///     Spawns a stack of a certain stack type. See <see cref="StackPrototype"/>.
         /// </summary>
-        public IEntity Spawn(int amount, StackPrototype prototype, EntityCoordinates spawnPosition)
+        public EntityUid Spawn(int amount, StackPrototype prototype, EntityCoordinates spawnPosition)
         {
             // Set the output result parameter to the new stack entity...
-            var entity = EntityManager.SpawnEntity(prototype.Spawn, spawnPosition);
-            var stack = EntityManager.GetComponent<StackComponent>(entity.Uid);
+            var entity = Spawn(prototype.Spawn, spawnPosition);
+            var stack = Comp<StackComponent>(entity);
 
             // And finally, set the correct amount!
-            SetCount(entity.Uid, amount, stack);
+            SetCount(entity, amount, stack);
             return entity;
         }
 
-        private void OnStackInteractUsing(EntityUid uid, StackComponent stack, InteractUsingEvent args)
+        private void OnStackAlternativeInteract(EntityUid uid, StackComponent stack, GetVerbsEvent<AlternativeVerb> args)
         {
-            if (args.Handled)
+            if (!args.CanAccess || !args.CanInteract)
                 return;
 
-            if (!args.Used.TryGetComponent<StackComponent>(out var otherStack))
-                return;
-
-            if (!otherStack.StackTypeId.Equals(stack.StackTypeId))
-                return;
-
-            var toTransfer = Math.Min(stack.Count, otherStack.AvailableSpace);
-            SetCount(uid, stack.Count - toTransfer, stack);
-            SetCount(args.Used.Uid, otherStack.Count + toTransfer, otherStack);
-
-            var popupPos = args.ClickLocation;
-
-            if (!popupPos.IsValid(EntityManager))
+            AlternativeVerb halve = new()
             {
-                popupPos = args.User.Transform.Coordinates;
+                Text = Loc.GetString("comp-stack-split-halve"),
+                Category = VerbCategory.Split,
+                Act = () => UserSplit(uid, args.User, stack.Count / 2, stack),
+                Priority = 1
+            };
+            args.Verbs.Add(halve);
+
+            var priority = 0;
+            foreach (var amount in DefaultSplitAmounts)
+            {
+                if (amount >= stack.Count)
+                    continue;
+
+                AlternativeVerb verb = new()
+                {
+                    Text = amount.ToString(),
+                    Category = VerbCategory.Split,
+                    Act = () => UserSplit(uid, args.User, amount, stack),
+                    // we want to sort by size, not alphabetically by the verb text.
+                    Priority = priority
+                };
+
+                priority--;
+
+                args.Verbs.Add(verb);
+            }
+        }
+
+        private void UserSplit(EntityUid uid, EntityUid userUid, int amount,
+            StackComponent? stack = null,
+            TransformComponent? userTransform = null)
+        {
+            if (!Resolve(uid, ref stack))
+                return;
+
+            if (!Resolve(userUid, ref userTransform))
+                return;
+
+            if (amount <= 0)
+            {
+                PopupSystem.PopupCursor(Loc.GetString("comp-stack-split-too-small"), Filter.Entities(userUid));
+                return;
             }
 
-            var filter = Filter.Entities(args.User.Uid);
+            if (Split(uid, amount, userTransform.Coordinates, stack) is not {} split)
+                return;
 
-            switch (toTransfer)
-            {
-                case > 0:
-                    _popupSystem.PopupCoordinates($"+{toTransfer}", popupPos, filter);
+            HandsSystem.PickupOrDrop(userUid, split);
 
-                    if (otherStack.AvailableSpace == 0)
-                    {
-                        _popupSystem.PopupCoordinates(Loc.GetString("comp-stack-becomes-full"),
-                            popupPos.Offset(new Vector2(0, -0.5f)) , filter);
-                    }
-
-                    break;
-
-                case 0 when otherStack.AvailableSpace == 0:
-                    _popupSystem.PopupCoordinates(Loc.GetString("comp-stack-already-full"), popupPos, filter);
-                    break;
-            }
-
-            args.Handled = true;
+            PopupSystem.PopupCursor(Loc.GetString("comp-stack-split"), Filter.Entities(userUid));
         }
     }
 }

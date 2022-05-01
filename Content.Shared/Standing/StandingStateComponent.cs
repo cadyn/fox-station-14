@@ -1,33 +1,29 @@
 using System;
-using Content.Shared.EffectBlocker;
 using Content.Shared.Sound;
-using Robust.Shared.Analyzers;
-using Robust.Shared.GameObjects;
 using Robust.Shared.GameStates;
-using Robust.Shared.Players;
 using Robust.Shared.Serialization;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Shared.Standing
 {
     [Friend(typeof(StandingStateSystem))]
     [RegisterComponent, NetworkedComponent]
-    public sealed class StandingStateComponent : Component, IEffectBlocker
+    public sealed class StandingStateComponent : Component
     {
-        public override string Name => "StandingState";
-
         [ViewVariables(VVAccess.ReadWrite)]
         [DataField("downSoundCollection")]
         public SoundSpecifier DownSoundCollection { get; } = new SoundCollectionSpecifier("BodyFall");
 
-        [ViewVariables]
         [DataField("standing")]
         public bool Standing { get; set; } = true;
 
-        public bool CanFall() => Standing;
+        /// <summary>
+        ///     List of fixtures that had vault-impassable prior to an entity being downed. Required when re-adding the
+        ///     collision mask.
+        /// </summary>
+        [DataField("vaultImpassableFixtures")]
+        public List<string> VaultImpassableFixtures = new();
 
-        public override ComponentState GetComponentState(ICommonSession player)
+        public override ComponentState GetComponentState()
         {
             return new StandingComponentState(Standing);
         }

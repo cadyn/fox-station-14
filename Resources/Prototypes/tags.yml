@@ -1,17 +1,31 @@
+# Alphabetical order is now apparently required.
+
+- type: Tag
+  id: AirAlarmElectronics
+
+- type: Tag
+  id: ATVKeys
+
 - type: Tag
   id: Baguette
 
 - type: Tag
+  id: Bee
+
+- type: Tag
+  id: BrassInstrument
+
+- type: Tag
   id: Brutepack
+
+- type: Tag
+  id: BodyBag
 
 - type: Tag
   id: BotanyHatchet
 
 - type: Tag
   id: BotanyHoe
-
-- type: Tag
-  id: BotanySharp
 
 - type: Tag
   id: BotanyShovel
@@ -26,10 +40,22 @@
   id: Carrot
 
 - type: Tag
+  id: Carpet
+
+- type: Tag
   id: CanPilot
 
 - type: Tag
+  id: CannotSuicide
+
+- type: Tag
   id: CaptainSabre
+
+- type: Tag
+  id: Cartridge
+
+- type: Tag
+  id: CigFilter
 
 - type: Tag
   id: CigPack
@@ -68,6 +94,9 @@
   id: CrowbarRed
 
 - type: Tag
+  id: Cryobeaker
+
+- type: Tag
   id: ConveyorAssembly
 
 - type: Tag
@@ -80,16 +109,43 @@
   id: Debug
 
 - type: Tag
+  id: Dice
+
+- type: Tag
+  id: Document
+
+- type: Tag
+  id: DoorBumpOpener
+
+- type: Tag
   id: DoorElectronics
+
+- type: Tag
+  id: DonkPocket
 
 - type: Tag
   id: Donut
 
 - type: Tag
+  id: Drone
+
+- type: Tag
+  id: DroneUsable
+
+- type: Tag
   id: Egg
 
 - type: Tag
+  id: EmagImmune
+
+- type: Tag
+  id: EmitterBolt
+
+- type: Tag
   id: ExplosivePassable
+
+- type: Tag
+  id: FireAlarmElectronics
 
 - type: Tag
   id: FireAxe
@@ -107,10 +163,25 @@
   id: FootstepSound
 
 - type: Tag
+  id: ForceFixRotations # fixrotations command WILL target this
+
+- type: Tag
+  id: ForceNoFixRotations # fixrotations command WON'T target this
+
+- type: Tag
   id: Gauze
 
 - type: Tag
   id: GlassBeaker
+
+- type: Tag
+  id: Handcuffs
+
+- type: Tag
+  id: HideContextMenu
+
+- type: Tag
+  id: HidesHair # for headwear.
 
 - type: Tag
   id: Hoe
@@ -125,6 +196,9 @@
   id: Katana
 
 - type: Tag
+  id: KeyedInstrument
+
+- type: Tag
   id: Knife
 
 - type: Tag
@@ -134,7 +208,19 @@
   id: Matchstick
 
 - type: Tag
+  id: Metal
+
+- type: Tag
+  id: MicrowaveMachineUnsafe
+
+- type: Tag
+  id: MicrowaveSelfUnsafe
+
+- type: Tag
   id: MonkeyCube
+
+- type: Tag
+  id: Mop
 
 - type: Tag
   id: NoSpinOnThrow
@@ -146,7 +232,25 @@
   id: Ore
 
 - type: Tag
+  id: Payload # for grenade/bomb crafting
+
+- type: Tag
+  id: PaintableAirlock
+
+- type: Tag
+  id: PercussionInstrument
+
+- type: Tag
+  id: Plastic
+
+- type: Tag
   id: Pill
+
+- type: Tag
+  id: PillCanister
+
+- type: Tag
+  id: Pipe
 
 - type: Tag
   id: Pizza
@@ -164,6 +268,19 @@
   id: Powerdrill
 
 - type: Tag
+  id: PussyWagonKeys
+  
+- type: Tag
+  id: RawMaterial
+
+# Give this to something that doesn't need any special recycler behavior and just needs deleting.
+- type: Tag
+  id: Recyclable
+
+- type: Tag
+  id: RCDDeconstructWhitelist
+
+- type: Tag
   id: RodMetal1
 
 - type: Tag
@@ -171,6 +288,9 @@
 
 - type: Tag
   id: Screwdriver
+
+- type: Tag
+  id: SecwayKeys
 
 - type: Tag
   id: Sheet
@@ -191,29 +311,47 @@
   id: Spear
 
 - type: Tag
+  id: StringInstrument
+
+- type: Tag
+  id: SyndicateSegwayKeys
+
+- type: Tag
   id: Taser
+
+- type: Tag
+  id: Trash
+
+- type: Tag
+  id: TrashBag
+
+- type: Tag
+  id: VehicleKey
+
+- type: Tag
+  id: WetFloorSign
 
 - type: Tag
   id: Wall
 
 - type: Tag
+  id: Window
+
+- type: Tag
   id: Wirecutter
-
-- type: Tag
-  id: Wrench
-
-- type: Tag
-  id: Write
-
-- type: Tag
-  id: RCDDeconstructWhitelist
 
 - type: Tag
   id: Wooden # just like our atmos
 
 - type: Tag
-  id: EmitterBolt
-  
+  id: WoodwindInstrument # even more like our atmos
+
 - type: Tag
-  id: HideContextMenu
+  id: Wrench
+
+- type: Tag
+  id: Wringer
+
+- type: Tag
+  id: Write
 

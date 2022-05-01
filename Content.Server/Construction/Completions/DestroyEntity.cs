@@ -4,19 +4,17 @@ using Robust.Shared.GameObjects;
 using Robust.Shared.Serialization.Manager.Attributes;
 using System.Threading.Tasks;
 using Content.Server.Destructible;
+using Content.Shared.Acts;
 
 namespace Content.Server.Construction.Completions
 {
     [UsedImplicitly]
     [DataDefinition]
-    public class DestroyEntity : IGraphAction
+    public sealed class DestroyEntity : IGraphAction
     {
-        public async Task PerformAction(IEntity entity, IEntity? user)
+        public void PerformAction(EntityUid uid, EntityUid? userUid, IEntityManager entityManager)
         {
-            if (entity.Deleted) return;
-
-            var destructibleSystem = EntitySystem.Get<DestructibleSystem>();
-            destructibleSystem.ActSystem.HandleDestruction(entity);
+            entityManager.EntitySysManager.GetEntitySystem<ActSystem>().HandleDestruction(uid);
         }
     }
 }

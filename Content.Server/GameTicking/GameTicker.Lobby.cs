@@ -1,20 +1,17 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using Content.Shared.GameTicking;
 using Robust.Server.Player;
-using Robust.Shared.Localization;
 using Robust.Shared.Network;
 using Robust.Shared.Player;
 using Robust.Shared.Players;
-using Robust.Shared.ViewVariables;
 
 namespace Content.Server.GameTicking
 {
-    public partial class GameTicker
+    public sealed partial class GameTicker
     {
         [ViewVariables]
         private readonly Dictionary<IPlayerSession, LobbyPlayerStatus> _playersInLobby = new();
+
+        [ViewVariables] private readonly HashSet<NetUserId> _playersInGame = new();
 
         [ViewVariables]
         private TimeSpan _roundStartTime;
@@ -23,28 +20,32 @@ namespace Content.Server.GameTicking
         private TimeSpan _pauseTime;
 
         [ViewVariables]
-        public bool Paused { get; set; }
+        public new bool Paused { get; set; }
 
         [ViewVariables]
         private bool _roundStartCountdownHasNotStartedYetDueToNoPlayers;
 
         public IReadOnlyDictionary<IPlayerSession, LobbyPlayerStatus> PlayersInLobby => _playersInLobby;
+        public IReadOnlySet<NetUserId> PlayersInGame => _playersInGame;
 
-        private void UpdateInfoText()
+        public void UpdateInfoText()
         {
             RaiseNetworkEvent(GetInfoMsg(), Filter.Empty().AddPlayers(_playersInLobby.Keys));
         }
 
         private string GetInfoText()
         {
-            if (Preset == null)
+            if (_preset == null)
             {
                 return string.Empty;
             }
 
-            var gmTitle = Preset.ModeTitle;
-            var desc = Preset.Description;
-            return Loc.GetString("game-ticker-get-info-text",("gmTitle", gmTitle),("desc", desc));
+            var playerCount = $"{_playerManager.PlayerCount}";
+            var map = _gameMapManager.GetSelectedMap();
+            var mapName = map?.MapName ?? Loc.GetString("game-ticker-no-map-selected");
+            var gmTitle = Loc.GetString(_preset.ModeTitle);
+            var desc = Loc.GetString(_preset.Description);
+            return Loc.GetString("game-ticker-get-info-text",("roundId", RoundId), ("playerCount", playerCount),("mapName", mapName),("gmTitle", gmTitle),("desc", desc));
         }
 
         private TickerLobbyReadyEvent GetStatusSingle(ICommonSession player, LobbyPlayerStatus status)
@@ -66,7 +67,7 @@ namespace Content.Server.GameTicking
         private TickerLobbyStatusEvent GetStatusMsg(IPlayerSession session)
         {
             _playersInLobby.TryGetValue(session, out var status);
-            return new TickerLobbyStatusEvent(RunLevel != GameRunLevel.PreRoundLobby, LobbySong, status == LobbyPlayerStatus.Ready, _roundStartTime, Paused);
+            return new TickerLobbyStatusEvent(RunLevel != GameRunLevel.PreRoundLobby, LobbySong, LobbyBackground,status == LobbyPlayerStatus.Ready, _roundStartTime, Paused);
         }
 
         private void SendStatusToAll()

@@ -10,17 +10,17 @@ namespace Content.Server.Chemistry.ReagentEffects
     /// Default metabolism for drink reagents. Attempts to find a ThirstComponent on the target,
     /// and to update it's thirst values.
     /// </summary>
-    public class SatiateThirst : ReagentEffect
+    public sealed class SatiateThirst : ReagentEffect
     {
         /// How much thirst is satiated each metabolism tick. Not currently tied to
         /// rate or anything.
-        [DataField("hydrationFactor")]
+        [DataField("factor")]
         public float HydrationFactor { get; set; } = 3.0f;
 
         /// Satiate thirst if a ThirstComponent can be found
-        public override void Metabolize(IEntity solutionEntity, Solution.ReagentQuantity amount)
+        public override void Effect(ReagentEffectArgs args)
         {
-            if (solutionEntity.TryGetComponent(out ThirstComponent? thirst))
+            if (args.EntityManager.TryGetComponent(args.SolutionEntity, out ThirstComponent? thirst))
                 thirst.UpdateThirst(HydrationFactor);
         }
     }

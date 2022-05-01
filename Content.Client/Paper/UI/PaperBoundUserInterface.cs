@@ -2,12 +2,13 @@ using JetBrains.Annotations;
 using Robust.Client.GameObjects;
 using Robust.Client.UserInterface.Controls;
 using Robust.Shared.GameObjects;
+using Robust.Shared.IoC;
 using static Content.Shared.Paper.SharedPaperComponent;
 
 namespace Content.Client.Paper.UI
 {
     [UsedImplicitly]
-    public class PaperBoundUserInterface : BoundUserInterface
+    public sealed class PaperBoundUserInterface : BoundUserInterface
     {
         private PaperWindow? _window;
 
@@ -20,7 +21,7 @@ namespace Content.Client.Paper.UI
             base.Open();
             _window = new PaperWindow
             {
-                Title = Owner.Owner.Name,
+                Title = IoCManager.Resolve<IEntityManager>().GetComponent<MetaDataComponent>(Owner.Owner).EntityName,
             };
             _window.OnClose += Close;
             _window.Input.OnTextEntered += Input_OnTextEntered;
@@ -38,13 +39,20 @@ namespace Content.Client.Paper.UI
         {
             if (!string.IsNullOrEmpty(obj.Text))
             {
-                SendMessage(new PaperInputText(obj.Text));
+                SendMessage(new PaperInputTextMessage(obj.Text));
 
                 if (_window != null)
                 {
                     _window.Input.Text = string.Empty;
                 }
             }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (!disposing) return;
+            _window?.Dispose();
         }
     }
 }

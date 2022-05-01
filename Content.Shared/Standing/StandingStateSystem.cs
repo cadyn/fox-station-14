@@ -1,18 +1,17 @@
-using System;
 using Content.Shared.Audio;
-using Content.Shared.Hands;
 using Content.Shared.Hands.Components;
 using Content.Shared.Rotation;
 using Robust.Shared.Audio;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
 using Robust.Shared.Player;
+using Robust.Shared.Timing;
+using Robust.Shared.Physics;
+using Content.Shared.Physics;
 
 namespace Content.Shared.Standing
 {
     public sealed class StandingStateSystem : EntitySystem
     {
-        [Dependency] private readonly SharedHandsSystem _sharedHandsSystem = default!;
+        [Dependency] private readonly IGameTiming _gameTiming = default!;
 
         public bool IsDown(EntityUid uid, StandingStateComponent? standingState = null)
         {
@@ -24,7 +23,7 @@ namespace Content.Shared.Standing
 
         public bool Down(EntityUid uid, bool playSound = true, bool dropHeldItems = true,
             StandingStateComponent? standingState = null,
-            SharedAppearanceComponent? appearance = null,
+            AppearanceComponent? appearance = null,
             SharedHandsComponent? hands = null)
         {
             // TODO: This should actually log missing comps...
@@ -43,7 +42,7 @@ namespace Content.Shared.Standing
             // and ultimately this is just to avoid boilerplate in Down callers + keep their behavior consistent.
             if (dropHeldItems && hands != null)
             {
-                _sharedHandsSystem.DropHandItems(uid, false, hands);
+                RaiseLocalEvent(uid, new DropHandItemsEvent(), false);
             }
 
             var msg = new DownAttemptEvent();
@@ -53,13 +52,29 @@ namespace Content.Shared.Standing
                 return false;
 
             standingState.Standing = false;
-            standingState.Dirty();
+            Dirty(standingState);
             RaiseLocalEvent(uid, new DownedEvent(), false);
+
+            if (!_gameTiming.IsFirstTimePredicted)
+                return true;
 
             // Seemed like the best place to put it
             appearance?.SetData(RotationVisuals.RotationState, RotationState.Horizontal);
 
+            if (TryComp(uid, out FixturesComponent? fixtureComponent))
+            {
+                foreach (var (key, fixture) in fixtureComponent.Fixtures)
+                {
+                    if ((fixture.CollisionMask & (int) CollisionGroup.VaultImpassable) == 0)
+                        continue;
+
+                    standingState.VaultImpassableFixtures.Add(key);
+                    fixture.CollisionMask &= ~(int) CollisionGroup.VaultImpassable;
+                }
+            }
+
             // Currently shit is only downed by server but when it's predicted we can probably only play this on server / client
+            // > no longer true with door crushing. There just needs to be a better way to handle audio prediction.
             if (playSound)
             {
                 SoundSystem.Play(Filter.Pvs(uid), standingState.DownSoundCollection.GetSound(), uid, AudioHelpers.WithVariation(0.25f));
@@ -70,7 +85,7 @@ namespace Content.Shared.Standing
 
         public bool Stand(EntityUid uid,
             StandingStateComponent? standingState = null,
-            SharedAppearanceComponent? appearance = null)
+            AppearanceComponent? appearance = null)
         {
             // TODO: This should actually log missing comps...
             if (!Resolve(uid, ref standingState, false))
@@ -93,8 +108,23 @@ namespace Content.Shared.Standing
             RaiseLocalEvent(uid, new StoodEvent(), false);
 
             appearance?.SetData(RotationVisuals.RotationState, RotationState.Vertical);
+
+            if (TryComp(uid, out FixturesComponent? fixtureComponent))
+            {
+                foreach (var key in standingState.VaultImpassableFixtures)
+                {
+                    if (fixtureComponent.Fixtures.TryGetValue(key, out var fixture))
+                        fixture.CollisionMask |= (int) CollisionGroup.VaultImpassable;
+                }
+            }
+            standingState.VaultImpassableFixtures.Clear();
+
             return true;
         }
+    }
+
+    public sealed class DropHandItemsEvent : EventArgs
+    {
     }
 
     /// <summary>

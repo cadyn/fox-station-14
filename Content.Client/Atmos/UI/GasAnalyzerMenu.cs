@@ -14,7 +14,7 @@ using static Robust.Client.UserInterface.Controls.BoxContainer;
 
 namespace Content.Client.Atmos.UI
 {
-    public class GasAnalyzerWindow : BaseWindow
+    public sealed class GasAnalyzerWindow : BaseWindow
     {
         public GasAnalyzerBoundUserInterface Owner { get; }
 
@@ -101,14 +101,14 @@ namespace Content.Client.Atmos.UI
                         MinSize = (20, 0),
                         HorizontalExpand = true,
                     },
-                    (refreshButton = new Button {Text = "gas-analyzer-window-refresh-button"}), //TODO: refresh icon?
+                    (refreshButton = new Button {Text = Loc.GetString("gas-analyzer-window-refresh-button")}), //TODO: refresh icon?
                     new Control
                     {
                         MinSize = (2, 0),
                     },
                     (CloseButton = new TextureButton
                     {
-                        StyleClasses = {SS14Window.StyleClassWindowCloseButton},
+                        StyleClasses = {DefaultWindow.StyleClassWindowCloseButton},
                         VerticalAlignment = VAlignment.Center
                     })
                 }

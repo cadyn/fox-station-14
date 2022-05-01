@@ -1,19 +1,35 @@
-﻿using System;
-using Robust.Shared.GameObjects;
+using System.Linq;
 using Robust.Shared.Map;
-using Robust.Shared.Maths;
 using Robust.Shared.Serialization;
+using static Content.Shared.Interaction.SharedInteractionSystem;
 
 namespace Content.Shared.Construction
 {
-    public class SharedConstructionSystem : EntitySystem
+    public abstract class SharedConstructionSystem : EntitySystem
     {
+        [Dependency] private readonly IMapManager _mapManager = default!;
+
+        /// <summary>
+        ///     Get predicate for construction obstruction checks.
+        /// </summary>
+        public Ignored? GetPredicate(bool canBuildInImpassable, MapCoordinates coords)
+        {
+            if (!canBuildInImpassable)
+                return null;
+
+            if (!_mapManager.TryFindGridAt(coords, out var grid))
+                return null;
+
+            var ignored = grid.GetAnchoredEntities(coords).ToHashSet();
+            return e => ignored.Contains(e);
+        }
+
         /// <summary>
         ///     Sent client -> server to to tell the server that we started building
         ///     a structure-construction.
         /// </summary>
         [Serializable, NetSerializable]
-        public class TryStartStructureConstructionMessage : EntityEventArgs
+        public sealed class TryStartStructureConstructionMessage : EntityEventArgs
         {
             /// <summary>
             ///     Position to start building.
@@ -46,7 +62,7 @@ namespace Content.Shared.Construction
         ///     an item-construction.
         /// </summary>
         [Serializable, NetSerializable]
-        public class TryStartItemConstructionMessage : EntityEventArgs
+        public sealed class TryStartItemConstructionMessage : EntityEventArgs
         {
             /// <summary>
             ///     The construction prototype to start building.
@@ -60,16 +76,46 @@ namespace Content.Shared.Construction
         }
 
         /// <summary>
-        /// Send server -> client to tell the client that a ghost has started to be constructed.
+        /// Sent server -> client to tell the client that a ghost has started to be constructed.
         /// </summary>
         [Serializable, NetSerializable]
-        public class AckStructureConstructionMessage : EntityEventArgs
+        public sealed class AckStructureConstructionMessage : EntityEventArgs
         {
             public readonly int GhostId;
 
             public AckStructureConstructionMessage(int ghostId)
             {
                 GhostId = ghostId;
+            }
+        }
+
+        /// <summary>
+        /// Sent client -> server to request a specific construction guide.
+        /// </summary>
+        [Serializable, NetSerializable]
+        public sealed class RequestConstructionGuide : EntityEventArgs
+        {
+            public readonly string ConstructionId;
+
+            public RequestConstructionGuide(string constructionId)
+            {
+                ConstructionId = constructionId;
+            }
+        }
+
+        /// <summary>
+        /// Sent server -> client as a response to a <see cref="RequestConstructionGuide"/> net message.
+        /// </summary>
+        [Serializable, NetSerializable]
+        public sealed class ResponseConstructionGuide : EntityEventArgs
+        {
+            public readonly string ConstructionId;
+            public readonly ConstructionGuide Guide;
+
+            public ResponseConstructionGuide(string constructionId, ConstructionGuide guide)
+            {
+                ConstructionId = constructionId;
+                Guide = guide;
             }
         }
     }

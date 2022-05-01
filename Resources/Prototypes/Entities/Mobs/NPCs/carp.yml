@@ -1,7 +1,7 @@
 - type: entity
   name: space carp
   id: MobCarp
-  parent: SimpleMobBase
+  parent: SimpleSpaceMobBase
   description: It's a space carp.
   components:
   - type: UtilityAI
@@ -18,12 +18,12 @@
       state: alive
       sprite: Mobs/Aliens/Carps/space.rsi
   - type: Physics
-    bodyType: Dynamic
+  - type: Fixtures
     fixtures:
     - shape:
-        !type:PhysShapeAabb
-          bounds: "-0.35,-0.35,0.35,0.35"
-      mass: 50
+        !type:PhysShapeCircle
+        radius: 0.40
+      mass: 20
       mask:
       - Impassable
       - MobImpassable
@@ -40,7 +40,37 @@
     visuals:
     - type: DamageStateVisualizer
       normal: alive
+      crit: crit
       dead: dead
+  - type: Butcherable
+    # TODO: CrapMeat or FishMeat # - 2022-02-17 LMAO crap meat
+    spawned:
+    - id: FoodMeat
+      amount: 2
+  - type: UnarmedCombat
+    range: 1.5
+    arcwidth: 0
+    arc: bite
+    hitSound:
+      path: /Audio/Effects/bite.ogg
+    damage:
+      types:
+        Piercing: 5
+        Slash: 10
+  - type: CombatMode
+    disarmAction:
+      enabled: false
+      autoPopulate: false
+      name: action-name-disarm
+  - type: GhostTakeoverAvailable
+    makeSentient: true
+    name: space carp
+    description: |
+      If you're a salvage spawn, defend the loot inside!
+      Otherwise, wreak havoc on the station!
+  - type: ReplacementAccent
+    accent: genericAggressive
+  - type: NoSlip
 
 - type: entity
   name: magicarp
@@ -54,6 +84,8 @@
     - map: ["enum.DamageStateVisualLayers.Base"]
       state: alive
       sprite: Mobs/Aliens/Carps/magic.rsi
+  - type: GhostTakeoverAvailable
+    name: magicarp
 
 - type: entity
   name: holocarp
@@ -68,11 +100,11 @@
       state: alive
       sprite: Mobs/Aliens/Carps/holo.rsi
   - type: Physics
-    bodyType: Dynamic
+  - type: Fixtures
     fixtures:
     - shape:
-        !type:PhysShapeAabb
-        bounds: "-0.35,-0.35,0.35,0.35"
+        !type:PhysShapeCircle
+        radius: 0.40
       mass: 5
       mask:
         - Impassable
@@ -80,3 +112,5 @@
         - SmallImpassable
       layer:
         - Opaque
+  - type: GhostTakeoverAvailable
+    name: holocarp

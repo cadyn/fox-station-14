@@ -7,15 +7,27 @@
   - type: MedicalScanner
   - type: Sprite
     netsync: false
-    noRot: true
     sprite: Structures/Machines/scanner.rsi
     layers:
     - state: open
       map: ["enum.MedicalScannerVisualLayers.Machine"]
     - state: idle_unlit
       map: ["enum.MedicalScannerVisualLayers.Terminal"]
+  - type: Physics
+    bodyType: Static
+  - type: Fixtures
+    fixtures:
+    - shape:
+        !type:PhysShapeAabb
+          bounds: "-0.25,-0.5,0.25,0.5"
+      mass: 25
+      layer:
+      - SmallImpassable
+      - Opaque
+      mask:
+      - MobMask
   - type: Construction
-    graph: machine
+    graph: Machine
     node: machine
   - type: Destructible
     thresholds:
@@ -36,6 +48,9 @@
   - type: Appearance
     visuals:
     - type: MedicalScannerVisualizer
+  - type: ActivatableUI
+    key: enum.MedicalScannerUiKey.Key
+  - type: ActivatableUIRequiresPower
   - type: UserInterface
     interfaces:
     - key: enum.MedicalScannerUiKey.Key

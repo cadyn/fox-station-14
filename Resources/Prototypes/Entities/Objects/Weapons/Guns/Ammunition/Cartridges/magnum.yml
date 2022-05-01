@@ -1,7 +1,7 @@
 - type: entity
   id: CartridgeMagnumBase
   name: cartridge (.40 magnum)
-  parent: BaseItem
+  parent: BaseCartridge
   abstract: true
   components:
   - type: Ammo
@@ -13,7 +13,6 @@
     layers:
     - state: base
       map: ["enum.AmmoVisualLayers.Base"]
-    drawdepth: FloorObjects
   - type: Appearance
     visuals:
     - type: SpentAmmoVisualizer

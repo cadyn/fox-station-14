@@ -9,9 +9,12 @@
       path: /Audio/Items/welder_drop.ogg
   - type: Sprite
     sprite: Objects/Tools/welder.rsi
+    netsync: false
     layers:
     - state: icon
+      map: ["enum.WelderLayers.Base"]
     - state: welder_flame
+      map: ["enum.WelderLayers.Flame"]
       shader: unshaded
       visible: false
   - type: Item
@@ -38,10 +41,15 @@
       collection: Welder
     qualities: Welding
   - type: Welder
+    litMeleeDamageBonus:
+      types: # When lit, negate standard melee damage and replace with heat
+        Heat: 10
+        Blunt: -10
   - type: PointLight
     enabled: false
     radius: 1.5
     color: orange
+  - type: Appearance
 
 - type: entity
   name: experimental welding tool
@@ -86,6 +94,11 @@
         - ReagentId: WeldingFuel
           Quantity: 25
         maxVol: 25
+  - type: Tool
+    useSound:
+      collection: Welder
+    qualities: Welding
+    speed: 0.7
   - type: PointLight
     enabled: false
     radius: 1.0

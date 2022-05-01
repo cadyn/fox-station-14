@@ -1,17 +1,29 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
+using Content.Shared.Examine;
 using Content.Server.Radio.Components;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
 
 namespace Content.Server.Radio.EntitySystems
 {
     [UsedImplicitly]
-    public class RadioSystem : EntitySystem
+    public sealed class RadioSystem : EntitySystem
     {
         private readonly List<string> _messages = new();
 
-        public void SpreadMessage(IRadio source, IEntity speaker, string message, int channel)
+        public override void Initialize()
+        {
+            base.Initialize();
+            SubscribeLocalEvent<HandheldRadioComponent, ExaminedEvent>(OnExamine);
+        }
+
+        private void OnExamine(EntityUid uid, HandheldRadioComponent component, ExaminedEvent args)
+        {
+            if (!args.IsInDetailsRange)
+                return;
+            args.PushMarkup(Loc.GetString("handheld-radio-component-on-examine",("frequency", component.BroadcastFrequency)));
+        }
+
+        public void SpreadMessage(IRadio source, EntityUid speaker, string message, int channel)
         {
             if (_messages.Contains(message)) return;
 

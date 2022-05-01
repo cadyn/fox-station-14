@@ -21,7 +21,7 @@ using Robust.Shared.Serialization.Manager;
 namespace Content.Tests.Server.Preferences
 {
     [TestFixture]
-    public class ServerDbSqliteTests : ContentUnitTest
+    public sealed class ServerDbSqliteTests : ContentUnitTest
     {
         private const string Prototypes = @"
 - type: dataset
@@ -43,6 +43,7 @@ namespace Content.Tests.Server.Preferences
         {
             return new(
                 "Charlie Charlieson",
+                "Human",
                 21,
                 Sex.Male,
                 Gender.Epicene,
@@ -60,7 +61,7 @@ namespace Content.Tests.Server.Preferences
                 BackpackPreference.Backpack,
                 new Dictionary<string, JobPriority>
                 {
-                    {SharedGameTicker.OverflowJob, JobPriority.High}
+                    {SharedGameTicker.FallbackOverflowJob, JobPriority.High}
                 },
                 PreferenceUnavailableMode.StayInLobby,
                 new List<string> ()
@@ -69,7 +70,7 @@ namespace Content.Tests.Server.Preferences
 
         private static ServerDbSqlite GetDb()
         {
-            var builder = new DbContextOptionsBuilder<ServerDbContext>();
+            var builder = new DbContextOptionsBuilder<SqliteServerDbContext>();
             var conn = new SqliteConnection("Data Source=:memory:");
             conn.Open();
             builder.UseSqlite(conn);

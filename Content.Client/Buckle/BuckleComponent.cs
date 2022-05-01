@@ -1,19 +1,23 @@
-﻿using Content.Shared.Buckle.Components;
+using Content.Shared.ActionBlocker;
+using Content.Shared.Buckle.Components;
+using Content.Shared.Vehicle.Components;
 using Robust.Client.GameObjects;
-using Robust.Shared.GameObjects;
 
 namespace Content.Client.Buckle
 {
     [RegisterComponent]
     [ComponentReference(typeof(SharedBuckleComponent))]
-    public class BuckleComponent : SharedBuckleComponent
+    public sealed class BuckleComponent : SharedBuckleComponent
     {
+        [Dependency] private readonly IEntityManager _entMan = default!;
+        [Dependency] private readonly IEntitySystemManager _sysMan = default!;
+
         private bool _buckled;
         private int? _originalDrawDepth;
 
         public override bool Buckled => _buckled;
 
-        public override bool TryBuckle(IEntity? user, IEntity to)
+        public override bool TryBuckle(EntityUid user, EntityUid to)
         {
             // TODO: Prediction
             return false;
@@ -30,7 +34,14 @@ namespace Content.Client.Buckle
             LastEntityBuckledTo = buckle.LastEntityBuckledTo;
             DontCollide = buckle.DontCollide;
 
-            if (!Owner.TryGetComponent(out SpriteComponent? ownerSprite))
+            _sysMan.GetEntitySystem<ActionBlockerSystem>().UpdateCanMove(Owner);
+
+            if (!_entMan.TryGetComponent(Owner, out SpriteComponent? ownerSprite))
+            {
+                return;
+            }
+
+            if (!_entMan.TryGetComponent(Owner, out RiderComponent? rider))
             {
                 return;
             }

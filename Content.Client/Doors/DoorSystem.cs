@@ -1,59 +1,35 @@
-using System;
-using System.Collections.Generic;
-using Content.Shared.Doors;
+using Content.Shared.Doors.Components;
+using Content.Shared.Doors.Systems;
+using Robust.Client.GameObjects;
+using Robust.Shared.Audio;
+using Robust.Shared.GameObjects;
+using Robust.Shared.Player;
 
-namespace Content.Client.Doors
+namespace Content.Client.Doors;
+
+public sealed class DoorSystem : SharedDoorSystem
 {
-    /// <summary>
-    /// Used by the client to "predict" when doors will change how collideable they are as part of their opening / closing.
-    /// </summary>
-    internal sealed class DoorSystem : SharedDoorSystem
+    // Gotta love it when both the client-side and server-side sprite components both have a draw depth, but for
+    // whatever bloody reason the shared component doesn't.
+    protected override void UpdateAppearance(EntityUid uid, DoorComponent? door = null)
     {
-        /// <summary>
-        /// List of doors that need to be periodically checked.
-        /// </summary>
-        private readonly List<ClientDoorComponent> _activeDoors = new();
+        if (!Resolve(uid, ref door))
+            return;
 
-        public override void Initialize()
+        base.UpdateAppearance(uid, door);
+
+        if (TryComp(uid, out SpriteComponent? sprite))
         {
-            base.Initialize();
-
-            SubscribeLocalEvent<DoorStateMessage>(HandleDoorState);
+            sprite.DrawDepth = (door.State == DoorState.Open)
+                ? door.OpenDrawDepth
+                : door.ClosedDrawDepth;
         }
+    }
 
-        /// <summary>
-        /// Registers doors to be periodically checked.
-        /// </summary>
-        /// <param name="message">A message corresponding to the component under consideration, raised when its state changes.</param>
-        private void HandleDoorState(DoorStateMessage message)
-        {
-            switch (message.State)
-            {
-                case SharedDoorComponent.DoorState.Closed:
-                case SharedDoorComponent.DoorState.Open:
-                    _activeDoors.Remove(message.Component);
-                    break;
-                case SharedDoorComponent.DoorState.Closing:
-                case SharedDoorComponent.DoorState.Opening:
-                    _activeDoors.Add(message.Component);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-        }
-
-        /// <inheritdoc />
-        public override void Update(float frameTime)
-        {
-            for (var i = _activeDoors.Count - 1; i >= 0; i--)
-            {
-                var comp = _activeDoors[i];
-                if (comp.Deleted)
-                {
-                    _activeDoors.RemoveAt(i);
-                }
-                comp.OnUpdate();
-            }
-        }
+    // TODO AUDIO PREDICT see comments in server-side PlaySound()
+    protected override void PlaySound(EntityUid uid, string sound, AudioParams audioParams, EntityUid? predictingPlayer, bool predicted)
+    {
+        if (GameTiming.InPrediction && GameTiming.IsFirstTimePredicted)
+            SoundSystem.Play(Filter.Local(), sound, uid, audioParams);
     }
 }

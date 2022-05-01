@@ -1,11 +1,10 @@
-using System.Collections.Generic;
+using System.Linq;
 using Content.Server.NodeContainer.EntitySystems;
 using Content.Server.Power.Components;
 using Content.Server.Power.NodeGroups;
 using Content.Server.Power.Pow3r;
 using JetBrains.Annotations;
-using Robust.Shared.GameObjects;
-using Robust.Shared.Maths;
+using Content.Shared.Power;
 
 namespace Content.Server.Power.EntitySystems
 {
@@ -13,13 +12,11 @@ namespace Content.Server.Power.EntitySystems
     ///     Manages power networks, power state, and all power components.
     /// </summary>
     [UsedImplicitly]
-    public class PowerNetSystem : EntitySystem
+    public sealed class PowerNetSystem : EntitySystem
     {
         private readonly PowerState _powerState = new();
         private readonly HashSet<PowerNet> _powerNetReconnectQueue = new();
         private readonly HashSet<ApcNet> _apcNetReconnectQueue = new();
-
-        private readonly Dictionary<PowerNetworkBatteryComponent, float> _lastSupply = new();
 
         private readonly BatteryRampPegSolver _solver = new();
 
@@ -148,17 +145,63 @@ namespace Content.Server.Power.EntitySystems
             };
         }
 
+        public NetworkPowerStatistics GetNetworkStatistics(PowerState.Network network)
+        {
+            // Right, consumption. Now this is a big mess.
+            // Start by summing up consumer draw rates.
+            // Then deal with batteries.
+            // While for consumers we want to use their max draw rates,
+            //  for batteries we ought to use their current draw rates,
+            //  because there's all sorts of weirdness with them.
+            // A full battery will still have the same max draw rate,
+            //  but will likely have deliberately limited current draw rate.
+            float consumptionW = network.Loads.Sum(s => _powerState.Loads[s].DesiredPower);
+            consumptionW += network.BatteriesCharging.Sum(s => _powerState.Batteries[s].CurrentReceiving);
+
+            // This is interesting because LastMaxSupplySum seems to match LastAvailableSupplySum for some reason.
+            // I suspect it's accounting for current supply rather than theoretical supply.
+            float maxSupplyW = network.Supplies.Sum(s => _powerState.Supplies[s].MaxSupply);
+
+            // Battery stuff is more complex.
+            // Without stealing PowerState, the most efficient way
+            //  to grab the necessary discharge data is from
+            //  PowerNetworkBatteryComponent (has Pow3r reference).
+            float supplyBatteriesW = 0.0f;
+            float storageCurrentJ = 0.0f;
+            float storageMaxJ = 0.0f;
+            foreach (var discharger in network.BatteriesDischarging)
+            {
+                var nb = _powerState.Batteries[discharger];
+                supplyBatteriesW += nb.CurrentSupply;
+                storageCurrentJ += nb.CurrentStorage;
+                storageMaxJ += nb.Capacity;
+                maxSupplyW += nb.MaxSupply;
+            }
+            // And charging
+            float outStorageCurrentJ = 0.0f;
+            float outStorageMaxJ = 0.0f;
+            foreach (var charger in network.BatteriesCharging)
+            {
+                var nb = _powerState.Batteries[charger];
+                outStorageCurrentJ += nb.CurrentStorage;
+                outStorageMaxJ += nb.Capacity;
+            }
+            return new()
+            {
+                SupplyCurrent = network.LastMaxSupplySum,
+                SupplyBatteries = supplyBatteriesW,
+                SupplyTheoretical = maxSupplyW,
+                Consumption = consumptionW,
+                InStorageCurrent = storageCurrentJ,
+                InStorageMax = storageMaxJ,
+                OutStorageCurrent = outStorageCurrentJ,
+                OutStorageMax = outStorageMaxJ
+            };
+        }
+
         public override void Update(float frameTime)
         {
             base.Update(frameTime);
-
-            // Setup for events.
-            {
-                foreach (var powerNetBattery in EntityManager.EntityQuery<PowerNetworkBatteryComponent>())
-                {
-                    _lastSupply[powerNetBattery] = powerNetBattery.CurrentSupply;
-                }
-            }
 
             // Reconnect networks.
             {
@@ -193,17 +236,22 @@ namespace Content.Server.Power.EntitySystems
             RaiseLocalEvent(new NetworkBatteryPostSync());
 
             // Send events where necessary.
+            // TODO: Instead of querying ALL power components every tick, and then checking if an event needs to be
+            // raised, should probably assemble a list of entity Uids during the actual solver steps.
             {
+                var appearanceQuery = GetEntityQuery<AppearanceComponent>();
                 foreach (var apcReceiver in EntityManager.EntityQuery<ApcPowerReceiverComponent>())
                 {
-                    var recv = apcReceiver.NetworkLoad.ReceivingPower;
-                    ref var last = ref apcReceiver.LastPowerReceived;
+                    var powered = apcReceiver.Powered;
+                    if (powered == apcReceiver.PoweredLastUpdate)
+                        continue;
 
-                    if (!MathHelper.CloseToPercent(recv, last))
-                    {
-                        last = recv;
-                        apcReceiver.ApcPowerChanged();
-                    }
+                    apcReceiver.PoweredLastUpdate = powered;
+
+                    RaiseLocalEvent(apcReceiver.Owner, new PowerChangedEvent(apcReceiver.Powered, apcReceiver.NetworkLoad.ReceivingPower));
+
+                    if (appearanceQuery.TryGetComponent(apcReceiver.Owner, out var appearance))
+                        appearance.SetData(PowerDeviceVisuals.Powered, powered);
                 }
 
                 foreach (var consumer in EntityManager.EntityQuery<PowerConsumerComponent>())
@@ -214,30 +262,26 @@ namespace Content.Server.Power.EntitySystems
                     {
                         lastRecv = newRecv;
                         var msg = new PowerConsumerReceivedChanged(newRecv, consumer.DrawRate);
-                        RaiseLocalEvent(consumer.Owner.Uid, msg);
+                        RaiseLocalEvent(consumer.Owner, msg);
                     }
                 }
 
                 foreach (var powerNetBattery in EntityManager.EntityQuery<PowerNetworkBatteryComponent>())
                 {
-                    if (!_lastSupply.TryGetValue(powerNetBattery, out var lastPowerSupply))
-                    {
-                        lastPowerSupply = 0f;
-                    }
-
+                    var lastSupply = powerNetBattery.LastSupply;
                     var currentSupply = powerNetBattery.CurrentSupply;
 
-                    if (lastPowerSupply == 0f && currentSupply != 0f)
+                    if (lastSupply == 0f && currentSupply != 0f)
                     {
-                        RaiseLocalEvent(powerNetBattery.Owner.Uid, new PowerNetBatterySupplyEvent {Supply = true});
+                        RaiseLocalEvent(powerNetBattery.Owner, new PowerNetBatterySupplyEvent {Supply = true});
                     }
-                    else if (lastPowerSupply > 0f && currentSupply == 0f)
+                    else if (lastSupply > 0f && currentSupply == 0f)
                     {
-                        RaiseLocalEvent(powerNetBattery.Owner.Uid, new PowerNetBatterySupplyEvent {Supply = false});
+                        RaiseLocalEvent(powerNetBattery.Owner, new PowerNetBatterySupplyEvent {Supply = false});
                     }
-                }
 
-                _lastSupply.Clear();
+                    powerNetBattery.LastSupply = currentSupply;
+                }
             }
         }
 
@@ -261,7 +305,7 @@ namespace Content.Server.Power.EntitySystems
             _powerState.Networks.Allocate(out network.Id) = network;
         }
 
-        private static void DoReconnectApcNet(ApcNet net)
+        private void DoReconnectApcNet(ApcNet net)
         {
             var netNode = net.NetworkNode;
 
@@ -279,15 +323,21 @@ namespace Content.Server.Power.EntitySystems
                 }
             }
 
+            foreach (var consumer in net.Consumers)
+            {
+                netNode.Loads.Add(consumer.NetworkLoad.Id);
+                consumer.NetworkLoad.LinkedNetwork = netNode.Id;
+            }
+
             foreach (var apc in net.Apcs)
             {
-                var netBattery = apc.Owner.GetComponent<PowerNetworkBatteryComponent>();
+                var netBattery = EntityManager.GetComponent<PowerNetworkBatteryComponent>(apc.Owner);
                 netNode.BatteriesDischarging.Add(netBattery.NetworkBattery.Id);
                 netBattery.NetworkBattery.LinkedNetworkDischarging = netNode.Id;
             }
         }
 
-        private static void DoReconnectPowerNet(PowerNet net)
+        private void DoReconnectPowerNet(PowerNet net)
         {
             var netNode = net.NetworkNode;
 
@@ -310,14 +360,14 @@ namespace Content.Server.Power.EntitySystems
 
             foreach (var charger in net.Chargers)
             {
-                var battery = charger.Owner.GetComponent<PowerNetworkBatteryComponent>();
+                var battery = EntityManager.GetComponent<PowerNetworkBatteryComponent>(charger.Owner);
                 netNode.BatteriesCharging.Add(battery.NetworkBattery.Id);
                 battery.NetworkBattery.LinkedNetworkCharging = netNode.Id;
             }
 
             foreach (var discharger in net.Dischargers)
             {
-                var battery = discharger.Owner.GetComponent<PowerNetworkBatteryComponent>();
+                var battery = EntityManager.GetComponent<PowerNetworkBatteryComponent>(discharger.Owner);
                 netNode.BatteriesDischarging.Add(battery.NetworkBattery.Id);
                 battery.NetworkBattery.LinkedNetworkDischarging = netNode.Id;
             }
@@ -370,4 +420,17 @@ namespace Content.Server.Power.EntitySystems
         public int CountSupplies;
         public int CountBatteries;
     }
+
+    public struct NetworkPowerStatistics
+    {
+        public float SupplyCurrent;
+        public float SupplyBatteries;
+        public float SupplyTheoretical;
+        public float Consumption;
+        public float InStorageCurrent;
+        public float InStorageMax;
+        public float OutStorageCurrent;
+        public float OutStorageMax;
+    }
+
 }

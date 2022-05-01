@@ -11,7 +11,7 @@ using Robust.Shared.Utility;
 namespace Content.Client.Ghost.Roles.UI
 {
     [UsedImplicitly]
-    public class MakeGhostRoleEui : BaseEui
+    public sealed class MakeGhostRoleEui : BaseEui
     {
         [Dependency] private readonly IPlayerManager _playerManager = default!;
         [Dependency] private readonly IClientConsoleHost _consoleHost = default!;
@@ -42,7 +42,7 @@ namespace Content.Client.Ghost.Roles.UI
             _window.OpenCentered();
         }
 
-        private void OnMake(EntityUid uid, string name, string description, bool makeSentient)
+        private void OnMake(EntityUid uid, string name, string description, string rules, bool makeSentient)
         {
             var player = _playerManager.LocalPlayer;
             if (player == null)
@@ -54,7 +54,8 @@ namespace Content.Client.Ghost.Roles.UI
                 $"makeghostrole " +
                 $"\"{CommandParsing.Escape(uid.ToString())}\" " +
                 $"\"{CommandParsing.Escape(name)}\" " +
-                $"\"{CommandParsing.Escape(description)}\"";
+                $"\"{CommandParsing.Escape(description)}\" " +
+                $"\"{CommandParsing.Escape(rules)}\"";
 
             _consoleHost.ExecuteCommand(player.Session, makeGhostRoleCommand);
 

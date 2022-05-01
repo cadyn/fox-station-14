@@ -1,23 +1,32 @@
-using Robust.Shared.GameObjects;
+using Robust.Shared.Serialization;
 
-namespace Content.Shared.Containers.ItemSlots
+namespace Content.Shared.Containers.ItemSlots;
+
+/// <summary>
+///     Used for various "eject this item" buttons.
+/// </summary>
+[Serializable, NetSerializable]
+public sealed class ItemSlotButtonPressedEvent : BoundUserInterfaceMessage
 {
     /// <summary>
-    ///     Item was placed in or removed from one of the slots in <see cref="SharedItemSlotsComponent"/> 
+    ///     The name of the slot/container from which to insert or eject an item.
     /// </summary>
-    public class ItemSlotChangedEvent : EntityEventArgs
-    {
-        public SharedItemSlotsComponent SlotsComponent;
-        public string SlotName;
-        public ItemSlot Slot;
-        public readonly EntityUid? ContainedItem;
+    public string SlotId;
 
-        public ItemSlotChangedEvent(SharedItemSlotsComponent slotsComponent, string slotName, ItemSlot slot)
-        {
-            SlotsComponent = slotsComponent;
-            SlotName = slotName;
-            Slot = slot;
-            ContainedItem = slot.ContainerSlot.ContainedEntity?.Uid;
-        }
+    /// <summary>
+    ///     Whether to attempt to insert an item into the slot, if there is not already one inside.
+    /// </summary>
+    public bool TryInsert;
+
+    /// <summary>
+    ///     Whether to attempt to eject the item from the slot, if it has one.
+    /// </summary>
+    public bool TryEject;
+
+    public ItemSlotButtonPressedEvent(string slotId, bool tryEject = true, bool tryInsert = true)
+    {
+        SlotId = slotId;
+        TryEject = tryEject;
+        TryInsert = tryInsert;
     }
 }

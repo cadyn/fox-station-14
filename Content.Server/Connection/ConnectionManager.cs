@@ -1,12 +1,16 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading.Tasks;
 using Content.Server.Database;
+using Content.Server.GameTicking;
 using Content.Server.Preferences.Managers;
-using Content.Shared;
 using Content.Shared.CCVar;
+using Robust.Server.Player;
 using Robust.Shared.Configuration;
+using Robust.Shared.GameObjects;
 using Robust.Shared.IoC;
+using Robust.Shared.Localization;
 using Robust.Shared.Network;
 
 
@@ -22,6 +26,8 @@ namespace Content.Server.Connection
     /// </summary>
     public sealed class ConnectionManager : IConnectionManager
     {
+        [Dependency] private readonly IServerDbManager _dbManager = default!;
+        [Dependency] private readonly IPlayerManager _plyMgr = default!;
         [Dependency] private readonly IServerNetManager _netMgr = default!;
         [Dependency] private readonly IServerDbManager _db = default!;
         [Dependency] private readonly IConfigurationManager _cfg = default!;
@@ -59,6 +65,35 @@ The ban reason is: ""{ban.Reason}""
 
         private async Task NetMgrOnConnecting(NetConnectingArgs e)
         {
+            var deny = await ShouldDeny(e);
+
+            var addr = e.IP.Address;
+            var userId = e.UserId;
+
+            if (deny != null)
+            {
+                var (reason, msg, banHits) = deny.Value;
+
+                var id = await _db.AddConnectionLogAsync(userId, e.UserName, addr, e.UserData.HWId, reason);
+                if (banHits is { Count: > 0 })
+                    await _db.AddServerBanHitsAsync(id, banHits);
+
+                e.Deny(msg);
+            }
+            else
+            {
+                await _db.AddConnectionLogAsync(userId, e.UserName, addr, e.UserData.HWId, null);
+
+                if (!ServerPreferencesManager.ShouldStorePrefs(e.AuthType))
+                    return;
+
+                await _db.UpdatePlayerRecordAsync(userId, e.UserName, addr, e.UserData.HWId);
+            }
+        }
+
+        private async Task<(ConnectionDenyReason, string, List<ServerBanDef>? bansHit)?> ShouldDeny(
+            NetConnectingArgs e)
+        {
             // Check if banned.
             var addr = e.IP.Address;
             var userId = e.UserId;
@@ -70,30 +105,28 @@ The ban reason is: ""{ban.Reason}""
                 hwId = null;
             }
 
-            var ban = await _db.GetServerBanAsync(addr, userId, hwId);
-            if (ban != null)
+            var adminData = await _dbManager.GetAdminDataForAsync(e.UserId);
+            var wasInGame = EntitySystem.TryGet<GameTicker>(out var ticker) && ticker.PlayersInGame.Contains(userId);
+            if ((_plyMgr.PlayerCount >= _cfg.GetCVar(CCVars.SoftMaxPlayers) && adminData is null) && !wasInGame)
             {
-                var expires = "This is a permanent ban.";
-                if (ban.ExpirationTime is { } expireTime)
-                {
-                    var duration = expireTime - ban.BanTime;
-                    var utc = expireTime.ToUniversalTime();
-                    expires = $"This ban is for {duration.TotalMinutes:N0} minutes and will expire at {utc:f} UTC.";
-                }
-                var reason = $@"You, or another user of this computer or connection, are banned from playing here.
-The ban reason is: ""{ban.Reason}""
-{expires}";
-                e.Deny(reason);
-                return;
+                return (ConnectionDenyReason.Full, Loc.GetString("soft-player-cap-full"), null);
             }
 
-            if (!ServerPreferencesManager.ShouldStorePrefs(e.AuthType))
+            var bans = await _db.GetServerBansAsync(addr, userId, hwId, includeUnbanned: false);
+            if (bans.Count > 0)
             {
-                return;
+                var firstBan = bans[0];
+                return (ConnectionDenyReason.Ban, firstBan.DisconnectMessage, bans);
             }
 
-            await _db.UpdatePlayerRecordAsync(userId, e.UserName, addr, e.UserData.HWId);
-            await _db.AddConnectionLogAsync(userId, e.UserName, addr, e.UserData.HWId);
+            if (_cfg.GetCVar(CCVars.WhitelistEnabled)
+                && await _db.GetWhitelistStatusAsync(userId) == false
+                && adminData is null)
+            {
+                return (ConnectionDenyReason.Whitelist, Loc.GetString("whitelist-not-whitelisted"), null);
+            }
+
+            return null;
         }
 
         private async Task<NetUserId?> AssignUserIdCallback(string name)

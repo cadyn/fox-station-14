@@ -1,9 +1,10 @@
+using Content.Server.Administration.Logs;
 using Content.Server.Atmos.Components;
 using Content.Server.NodeContainer.EntitySystems;
 using Content.Shared.Atmos.EntitySystems;
 using Content.Shared.Maps;
 using JetBrains.Annotations;
-using Robust.Shared.IoC;
+using Robust.Shared.Containers;
 using Robust.Shared.Map;
 
 namespace Content.Server.Atmos.EntitySystems
@@ -12,9 +13,13 @@ namespace Content.Server.Atmos.EntitySystems
     ///     This is our SSAir equivalent, if you need to interact with or query atmos in any way, go through this.
     /// </summary>
     [UsedImplicitly]
-    public partial class AtmosphereSystem : SharedAtmosphereSystem
+    public sealed partial class AtmosphereSystem : SharedAtmosphereSystem
     {
         [Dependency] private readonly IMapManager _mapManager = default!;
+        [Dependency] private readonly AdminLogSystem _adminLog = default!;
+        [Dependency] private readonly SharedContainerSystem _containers = default!;
+        [Dependency] private readonly SharedPhysicsSystem _physics = default!;
+
 
         private const float ExposedUpdateDelay = 1f;
         private float _exposedTimer = 0f;
@@ -26,36 +31,34 @@ namespace Content.Server.Atmos.EntitySystems
             UpdatesAfter.Add(typeof(NodeGroupSystem));
 
             InitializeGases();
+            InitializeCommands();
             InitializeCVars();
             InitializeGrid();
 
-            #region Events
 
-            // Map events.
-            _mapManager.TileChanged += OnTileChanged;
+            SubscribeLocalEvent<TileChangedEvent>(OnTileChanged);
 
-            #endregion
         }
 
         public override void Shutdown()
         {
             base.Shutdown();
 
-            _mapManager.TileChanged -= OnTileChanged;
+            ShutdownCommands();
         }
 
-        private void OnTileChanged(object? sender, TileChangedEventArgs eventArgs)
+        private void OnTileChanged(TileChangedEvent ev)
         {
             // When a tile changes, we want to update it only if it's gone from
             // space -> not space or vice versa. So if the old tile is the
             // same as the new tile in terms of space-ness, ignore the change
 
-            if (eventArgs.NewTile.IsSpace() == eventArgs.OldTile.IsSpace())
+            if (ev.NewTile.IsSpace(_tileDefinitionManager) == ev.OldTile.IsSpace(_tileDefinitionManager))
             {
                 return;
             }
 
-            InvalidateTile(eventArgs.NewTile.GridIndex, eventArgs.NewTile.GridIndices);
+            InvalidateTile(ev.NewTile.GridIndex, ev.NewTile.GridIndices);
         }
 
         public override void Update(float frameTime)
@@ -63,21 +66,28 @@ namespace Content.Server.Atmos.EntitySystems
             base.Update(frameTime);
 
             UpdateProcessing(frameTime);
+            UpdateHighPressure(frameTime);
 
             _exposedTimer += frameTime;
 
-            if (_exposedTimer >= ExposedUpdateDelay)
-            {
-                foreach (var exposed in EntityManager.EntityQuery<AtmosExposedComponent>())
-                {
-                    // TODO ATMOS: Kill this with fire.
-                    var tile = GetTileMixture(exposed.Owner.Transform.Coordinates);
-                    if (tile == null) continue;
-                    exposed.Update(tile, _exposedTimer, this);
-                }
+            if (_exposedTimer < ExposedUpdateDelay)
+                return;
 
-                _exposedTimer -= ExposedUpdateDelay;
+            foreach (var (exposed, transform) in EntityManager.EntityQuery<AtmosExposedComponent, TransformComponent>())
+            {
+                // Used for things like disposals/cryo to change which air people are exposed to.
+                var airEvent = new AtmosExposedGetAirEvent();
+                RaiseLocalEvent(exposed.Owner, ref airEvent, false);
+
+                airEvent.Gas ??= GetTileMixture(transform.Coordinates);
+                if (airEvent.Gas == null)
+                    continue;
+
+                var updateEvent = new AtmosExposedUpdateEvent(transform.Coordinates, airEvent.Gas);
+                RaiseLocalEvent(exposed.Owner, ref updateEvent);
             }
+
+            _exposedTimer -= ExposedUpdateDelay;
         }
     }
 }

@@ -19,6 +19,28 @@
         amount: 2
       - id: Gauze
         amount: 2
+      - id: BoxLatex
+        amount: 1
+      - id: BoxSterile
+        amount: 1
+      - id: BoxMouthSwab
+        amount: 1
+
+- type: entity
+  id: CrateChemistrySupplies
+  name: chemistry supplies crate
+  parent: CrateMedical
+  components:
+  - type: StorageFill
+    contents:
+      - id: BoxSyringe
+        amount: 1
+      - id: BoxBeaker
+        amount: 1
+      - id: BoxPillCanister
+        amount: 1
+      - id: Dropper
+        amount: 2
 
 - type: entity
   id: CrateMedicalSurgery

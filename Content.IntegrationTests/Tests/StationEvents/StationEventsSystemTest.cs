@@ -9,12 +9,12 @@ using Robust.Shared.Timing;
 namespace Content.IntegrationTests.Tests.StationEvents
 {
     [TestFixture]
-    public class StationEventsSystemTest : ContentIntegrationTest
+    public sealed class StationEventsSystemTest : ContentIntegrationTest
     {
         [Test]
         public async Task Test()
         {
-            var server = StartServerDummyTicker();
+            var server = StartServer();
 
             server.Assert(() =>
             {

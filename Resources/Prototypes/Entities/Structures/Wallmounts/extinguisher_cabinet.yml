@@ -3,6 +3,8 @@
   name: extinguisher cabinet
   description: A small wall mounted cabinet designed to hold a fire extinguisher.
   components:
+    - type: WallMount
+      arc: 360
     - type: Transform
       anchored: true
     - type: Clickable
@@ -18,19 +20,17 @@
       - state: closed
         map: ["enum.ItemCabinetVisualLayers.Door"]
     - type: ItemCabinet
+      cabinetSlot:
+        ejectOnInteract: true
+        whitelist:
+          components:
+          - FireExtinguisher
       doorSound:
         path: /Audio/Machines/machine_switch.ogg
     - type: Appearance
-      visuals:
-        - type: ItemCabinetVisualizer
-          openState: open
-          closedState: closed
-    - type: ItemSlots
-      slots:
-        cabinetSlot:
-          whitelist:
-            components:
-            - FireExtinguisher
+    - type: ItemCabinetVisuals
+      openState: open
+      closedState: closed
   placement:
     mode: SnapgridCenter
 
@@ -48,14 +48,12 @@
   suffix: Filled
   components:
   - type: ItemCabinet
-    spawnPrototype: FireExtinguisher
-  - type: ItemSlots
-    slots:
-      cabinetSlot:
-        item: FireExtinguisher
-        whitelist:
-          components:
-          - FireExtinguisher
+    cabinetSlot:
+      ejectOnInteract: true
+      startingItem: FireExtinguisher
+      whitelist:
+        components:
+        - FireExtinguisher
 
 - type: entity
   id: ExtinguisherCabinetFilledOpen

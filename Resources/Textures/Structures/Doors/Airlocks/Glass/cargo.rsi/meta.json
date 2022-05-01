@@ -46,7 +46,7 @@
       ]
     },
     {
-      "name": "deny",
+      "name": "deny_unlit",
       "delays": [
         [
           0.1,
@@ -181,6 +181,15 @@
     },
     {
       "name": "welded"
+    },
+    {
+      "name": "emergency_unlit",
+      "delays": [
+        [
+          0.4,
+          0.4
+        ]
+      ]
     }
   ]
 }

@@ -1,17 +1,9 @@
-using System;
-using Content.Shared.ActionBlocker;
 using Content.Shared.Hands.Components;
-using Content.Shared.Interaction;
-using Content.Shared.Interaction.Helpers;
 using Content.Shared.Inventory;
-using Robust.Shared.GameObjects;
+using Content.Shared.Sound;
 using Robust.Shared.GameStates;
-using Robust.Shared.Maths;
-using Robust.Shared.Physics;
-using Robust.Shared.Players;
 using Robust.Shared.Serialization;
-using Robust.Shared.Serialization.Manager.Attributes;
-using Robust.Shared.ViewVariables;
+using static Robust.Shared.GameObjects.SharedSpriteComponent;
 
 namespace Content.Shared.Item
 {
@@ -19,9 +11,9 @@ namespace Content.Shared.Item
     ///    Players can pick up, drop, and put items in bags, and they can be seen in player's hands.
     /// </summary>
     [NetworkedComponent()]
-    public abstract class SharedItemComponent : Component, IEquipped, IUnequipped, IInteractHand
+    public abstract class SharedItemComponent : Component
     {
-        public override string Name => "Item";
+        [Dependency] private readonly IEntityManager _entMan = default!;
 
         /// <summary>
         ///     How much big this item is.
@@ -39,9 +31,32 @@ namespace Content.Shared.Item
         [DataField("size")]
         private int _size;
 
+        [DataField("inhandVisuals")]
+        public Dictionary<HandLocation, List<PrototypeLayerData>> InhandVisuals = new();
+
+        [DataField("clothingVisuals")]
+        public Dictionary<string, List<PrototypeLayerData>> ClothingVisuals = new();
+
         /// <summary>
-        ///     Part of the state of the sprite shown on the player when this item is in their hands.
+        ///     Whether or not this item can be picked up.
         /// </summary>
+        /// <remarks>
+        ///     This should almost always be true for items. But in some special cases, an item can be equipped but not
+        ///     picked up. E.g., hardsuit helmets are attached to the suit, so we want to disable things like the pickup
+        ///     verb.
+        /// </remarks>
+        [DataField("canPickup")]
+        public bool CanPickup = true;
+
+        [DataField("quickEquip")]
+        public bool QuickEquip = true;
+
+        /// <summary>
+        ///     Part of the state of the sprite shown on the player when this item is in their hands or inventory.
+        /// </summary>
+        /// <remarks>
+        ///     Only used if <see cref="InhandVisuals"/> or <see cref="ClothingVisuals"/> are unspecified.
+        /// </remarks>
         [ViewVariables(VVAccess.ReadWrite)]
         public string? EquippedPrefix
         {
@@ -49,130 +64,70 @@ namespace Content.Shared.Item
             set
             {
                 _equippedPrefix = value;
-                OnEquippedPrefixChange();
+                EntitySystem.Get<SharedItemSystem>().VisualsChanged(Owner, this);
                 Dirty();
             }
         }
         [DataField("HeldPrefix")]
         private string? _equippedPrefix;
 
-        /// <summary>
-        ///     Color of the sprite shown on the player when this item is in their hands.
-        /// </summary>
-        [ViewVariables(VVAccess.ReadWrite)]
-        public Color Color
-        {
-            get => _color;
-            protected set
-            {
-                _color = value;
-                Dirty();
-            }
-        }
-        [DataField("color")]
-        private Color _color = Color.White;
+        [ViewVariables]
+        [DataField("Slots")]
+        public SlotFlags SlotFlags = SlotFlags.PREVENTEQUIP; //Different from None, NONE allows equips if no slot flags are required
 
+        [DataField("equipSound")]
+        public SoundSpecifier? EquipSound { get; set; } = default!;
+
+        [DataField("unequipSound")]
+        public SoundSpecifier? UnequipSound = default!;
+        
         /// <summary>
-        ///     Rsi of the sprite shown on the player when this item is in their hands.
+        ///     Rsi of the sprite shown on the player when this item is in their hands. Used to generate a default entry for <see cref="InhandVisuals"/>
         /// </summary>
         [ViewVariables(VVAccess.ReadWrite)]
-        public string? RsiPath
-        {
-            get => _rsiPath;
-            set
-            {
-                _rsiPath = value;
-                Dirty();
-            }
-        }
         [DataField("sprite")]
-        private string? _rsiPath;
+        public readonly string? RsiPath;
 
-        public override ComponentState GetComponentState(ICommonSession player)
+        public void RemovedFromSlot()
         {
-            return new ItemComponentState(Size, EquippedPrefix, Color, RsiPath);
+            if (_entMan.TryGetComponent(Owner, out SharedSpriteComponent component))
+                component.Visible = true;
         }
 
-        public override void HandleComponentState(ComponentState? curState, ComponentState? nextState)
+        public virtual void EquippedToSlot()
         {
-            base.HandleComponentState(curState, nextState);
-
-            if (curState is not ItemComponentState state)
-                return;
-
-            Size = state.Size;
-            EquippedPrefix = state.EquippedPrefix;
-            Color = state.Color;
-            RsiPath = state.RsiPath;
+            if (_entMan.TryGetComponent(Owner, out SharedSpriteComponent component))
+                component.Visible = false;
         }
-
-        /// <summary>
-        ///     If a player can pick up this item.
-        /// </summary>
-        public bool CanPickup(IEntity user, bool popup = true)
-        {
-            if (!EntitySystem.Get<ActionBlockerSystem>().CanPickup(user))
-                return false;
-
-            if (user.Transform.MapID != Owner.Transform.MapID)
-                return false;
-
-            if (!Owner.TryGetComponent(out IPhysBody? physics) || physics.BodyType == BodyType.Static)
-                return false;
-
-            return user.InRangeUnobstructed(Owner, ignoreInsideBlocker: true, popup: popup);
-        }
-
-        void IEquipped.Equipped(EquippedEventArgs eventArgs)
-        {
-            EquippedToSlot();
-        }
-
-        void IUnequipped.Unequipped(UnequippedEventArgs eventArgs)
-        {
-            RemovedFromSlot();
-        }
-
-        bool IInteractHand.InteractHand(InteractHandEventArgs eventArgs)
-        {
-            var user = eventArgs.User;
-
-            if (!CanPickup(user))
-                return false;
-
-            if (!user.TryGetComponent(out SharedHandsComponent? hands))
-                return false;
-
-            var activeHand = hands.ActiveHand;
-
-            if (activeHand == null)
-                return false;
-
-            hands.TryPickupEntityToActiveHand(Owner);
-            return true;
-        }
-
-        protected virtual void OnEquippedPrefixChange() { }
-
-        public virtual void RemovedFromSlot() { }
-
-        public virtual void EquippedToSlot() { }
     }
 
     [Serializable, NetSerializable]
-    public class ItemComponentState : ComponentState
+    public sealed class ItemComponentState : ComponentState
     {
         public int Size { get; }
         public string? EquippedPrefix { get; }
-        public Color Color { get; }
-        public string? RsiPath { get; }
 
-        public ItemComponentState(int size, string? equippedPrefix, Color color, string? rsiPath)
+        public ItemComponentState(int size, string? equippedPrefix)
         {
             Size = size;
             EquippedPrefix = equippedPrefix;
-            Color = color;
-            RsiPath = rsiPath;
+        }
+    }
+
+    /// <summary>
+    ///     Raised when an item's visual state is changed. The event is directed at the entity that contains this item, so
+    ///     that it can properly update its hands or inventory sprites and GUI.
+    /// </summary>
+    [Serializable, NetSerializable]
+    public sealed class VisualsChangedEvent : EntityEventArgs
+    {
+        public readonly EntityUid Item;
+        public readonly string ContainerId;
+
+        public VisualsChangedEvent(EntityUid item, string containerId)
+        {
+            Item = item;
+            ContainerId = containerId;
         }
     }
 

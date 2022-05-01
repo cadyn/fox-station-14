@@ -2,13 +2,13 @@
 
 namespace Content.Shared.DragDrop
 {
-    public class DropAttemptEvent : CancellableEntityEventArgs
+    public sealed class DropAttemptEvent : CancellableEntityEventArgs
     {
-        public DropAttemptEvent(IEntity entity)
+        public DropAttemptEvent(EntityUid uid)
         {
-            Entity = entity;
+            Uid = uid;
         }
 
-        public IEntity Entity { get; }
+        public EntityUid Uid { get; }
     }
 }

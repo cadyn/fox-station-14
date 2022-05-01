@@ -1,15 +1,9 @@
-using System.Collections.Generic;
 using System.Linq;
 using Content.Server.Cloning.Components;
 using Content.Server.Mind.Components;
 using Content.Server.Power.Components;
 using Content.Shared.GameTicking;
-using Content.Shared.Interaction;
 using Content.Shared.Preferences;
-using Robust.Server.GameObjects;
-using Robust.Shared.GameObjects;
-using Robust.Shared.IoC;
-using Robust.Shared.Maths;
 using Robust.Shared.Timing;
 using static Content.Shared.Cloning.SharedCloningPodComponent;
 
@@ -28,15 +22,14 @@ namespace Content.Server.Cloning
             base.Initialize();
 
             SubscribeLocalEvent<RoundRestartCleanupEvent>(Reset);
-            SubscribeLocalEvent<CloningPodComponent, ActivateInWorldEvent>(HandleActivate);
             SubscribeLocalEvent<BeingClonedComponent, MindAddedMessage>(HandleMindAdded);
         }
 
         internal void TransferMindToClone(Mind.Mind mind)
         {
-            if (!ClonesWaitingForMind.TryGetValue(mind, out var entityUid) ||
-                !EntityManager.TryGetEntity(entityUid, out var entity) ||
-                !entity.TryGetComponent(out MindComponent? mindComp) ||
+            if (!ClonesWaitingForMind.TryGetValue(mind, out var entity) ||
+                !EntityManager.EntityExists(entity) ||
+                !EntityManager.TryGetComponent(entity, out MindComponent? mindComp) ||
                 mindComp.Mind != null)
                 return;
 
@@ -45,25 +38,14 @@ namespace Content.Server.Cloning
             ClonesWaitingForMind.Remove(mind);
         }
 
-        private void HandleActivate(EntityUid uid, CloningPodComponent component, ActivateInWorldEvent args)
-        {
-            if (!component.Powered ||
-                !args.User.TryGetComponent(out ActorComponent? actor))
-            {
-                return;
-            }
-
-            component.UserInterface?.Open(actor.PlayerSession);
-        }
-
         private void HandleMindAdded(EntityUid uid, BeingClonedComponent component, MindAddedMessage message)
         {
             if (component.Parent == EntityUid.Invalid ||
-                !EntityManager.TryGetEntity(component.Parent, out var parent) ||
-                !parent.TryGetComponent<CloningPodComponent>(out var cloningPodComponent) ||
+                !EntityManager.EntityExists(component.Parent) ||
+                !EntityManager.TryGetComponent<CloningPodComponent?>(component.Parent, out var cloningPodComponent) ||
                 component.Owner != cloningPodComponent.BodyContainer?.ContainedEntity)
             {
-                component.Owner.RemoveComponent<BeingClonedComponent>();
+                EntityManager.RemoveComponent<BeingClonedComponent>(component.Owner);
                 return;
             }
 
@@ -82,7 +64,7 @@ namespace Content.Server.Cloning
                 }
 
                 if (!power.Powered)
-                    return;
+                    continue;
 
                 if (cloning.BodyContainer.ContainedEntity != null)
                 {
@@ -158,6 +140,7 @@ namespace Content.Server.Cloning
     struct ClonerDNAEntry {
         public Mind.Mind Mind;
         public HumanoidCharacterProfile Profile;
+
         public ClonerDNAEntry(Mind.Mind m, HumanoidCharacterProfile hcp)
         {
             Mind = m;

@@ -10,10 +10,8 @@ namespace Content.Server.Power.Components
     ///     Draws power directly from an MV or HV wire it is on top of.
     /// </summary>
     [RegisterComponent]
-    public class PowerConsumerComponent : BasePowerNetComponent
+    public sealed class PowerConsumerComponent : BaseNetConnectorComponent<IBasePowerNet>
     {
-        public override string Name => "PowerConsumer";
-
         /// <summary>
         ///     How much power this needs to be fully powered.
         /// </summary>
@@ -31,12 +29,12 @@ namespace Content.Server.Power.Components
 
         public PowerState.Load NetworkLoad { get; } = new();
 
-        protected override void AddSelfToNet(IPowerNet powerNet)
+        protected override void AddSelfToNet(IBasePowerNet powerNet)
         {
             powerNet.AddConsumer(this);
         }
 
-        protected override void RemoveSelfFromNet(IPowerNet powerNet)
+        protected override void RemoveSelfFromNet(IBasePowerNet powerNet)
         {
             powerNet.RemoveConsumer(this);
         }

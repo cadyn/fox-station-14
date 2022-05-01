@@ -2,33 +2,39 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Linq;
+using System.Net;
+using System.Text.Json;
+using Content.Shared.Database;
 using Microsoft.EntityFrameworkCore;
 
 namespace Content.Server.Database
 {
     public abstract class ServerDbContext : DbContext
     {
-        /// <summary>
-        /// The "dotnet ef" CLI tool uses the parameter-less constructor.
-        /// When that happens we want to supply the <see cref="DbContextOptions"/> via <see cref="DbContext.OnConfiguring"/>.
-        /// To use the context within the application, the options need to be passed the constructor instead.
-        /// </summary>
-        protected readonly bool InitializedWithOptions;
-
-        public ServerDbContext()
+        protected ServerDbContext(DbContextOptions options) : base(options)
         {
-        }
-
-        public ServerDbContext(DbContextOptions<ServerDbContext> options) : base(options)
-        {
-            InitializedWithOptions = true;
         }
 
         public DbSet<Preference> Preference { get; set; } = null!;
         public DbSet<Profile> Profile { get; set; } = null!;
         public DbSet<AssignedUserId> AssignedUserId { get; set; } = null!;
+        public DbSet<Player> Player { get; set; } = default!;
         public DbSet<Admin> Admin { get; set; } = null!;
         public DbSet<AdminRank> AdminRank { get; set; } = null!;
+        public DbSet<Round> Round { get; set; } = null!;
+        public DbSet<Server> Server { get; set; } = null!;
+        public DbSet<AdminLog> AdminLog { get; set; } = null!;
+        public DbSet<AdminLogPlayer> AdminLogPlayer { get; set; } = null!;
+        public DbSet<Whitelist> Whitelist { get; set; } = null!;
+        public DbSet<ServerBan> Ban { get; set; } = default!;
+        public DbSet<ServerUnban> Unban { get; set; } = default!;
+        public DbSet<ConnectionLog> ConnectionLog { get; set; } = default!;
+        public DbSet<ServerBanHit> ServerBanHit { get; set; } = default!;
+        public DbSet<ServerRoleBan> RoleBan { get; set; } = default!;
+        public DbSet<ServerRoleUnban> RoleUnban { get; set; } = default!;
+        public DbSet<UploadedResourceLog> UploadedResourceLog { get; set; } = default!;
+        public DbSet<AdminNote> AdminNotes { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -77,10 +83,96 @@ namespace Content.Server.Database
             modelBuilder.Entity<AdminRankFlag>()
                 .HasIndex(f => new {f.Flag, f.AdminRankId})
                 .IsUnique();
+
+            modelBuilder.Entity<AdminLog>()
+                .HasKey(log => new {log.Id, log.RoundId});
+
+            modelBuilder.Entity<AdminLog>()
+                .Property(log => log.Id)
+                .ValueGeneratedOnAdd();
+
+            modelBuilder.Entity<AdminLogPlayer>()
+                .HasOne(player => player.Player)
+                .WithMany(player => player.AdminLogs)
+                .HasForeignKey(player => player.PlayerUserId)
+                .HasPrincipalKey(player => player.UserId);
+
+            modelBuilder.Entity<AdminLogPlayer>()
+                .HasKey(logPlayer => new {logPlayer.PlayerUserId, logPlayer.LogId, logPlayer.RoundId});
+
+            modelBuilder.Entity<ServerBan>()
+                .HasIndex(p => p.UserId);
+
+            modelBuilder.Entity<ServerBan>()
+                .HasIndex(p => p.Address);
+
+            modelBuilder.Entity<ServerBan>()
+                .HasIndex(p => p.UserId);
+
+            modelBuilder.Entity<ServerUnban>()
+                .HasIndex(p => p.BanId)
+                .IsUnique();
+
+            modelBuilder.Entity<ServerBan>()
+                .HasCheckConstraint("HaveEitherAddressOrUserIdOrHWId", "address IS NOT NULL OR user_id IS NOT NULL OR hwid IS NOT NULL");
+
+            modelBuilder.Entity<ServerRoleBan>()
+                .HasIndex(p => p.UserId);
+
+            modelBuilder.Entity<ServerRoleBan>()
+                .HasIndex(p => p.Address);
+
+            modelBuilder.Entity<ServerRoleBan>()
+                .HasIndex(p => p.UserId);
+
+            modelBuilder.Entity<ServerRoleUnban>()
+                .HasIndex(p => p.BanId)
+                .IsUnique();
+
+            modelBuilder.Entity<ServerRoleBan>()
+                .HasCheckConstraint("HaveEitherAddressOrUserIdOrHWId", "address IS NOT NULL OR user_id IS NOT NULL OR hwid IS NOT NULL");
+
+            modelBuilder.Entity<Player>()
+                .HasIndex(p => p.UserId)
+                .IsUnique();
+
+            modelBuilder.Entity<Player>()
+                .HasIndex(p => p.LastSeenUserName);
+
+            modelBuilder.Entity<ConnectionLog>()
+                .HasIndex(p => p.UserId);
+
+            modelBuilder.Entity<AdminNote>()
+                .HasOne(note => note.Player)
+                .WithMany(player => player.AdminNotesReceived)
+                .HasForeignKey(note => note.PlayerUserId)
+                .HasPrincipalKey(player => player.UserId);
+
+            modelBuilder.Entity<AdminNote>()
+                .HasOne(version => version.CreatedBy)
+                .WithMany(author => author.AdminNotesCreated)
+                .HasForeignKey(note => note.CreatedById)
+                .HasPrincipalKey(author => author.UserId);
+
+            modelBuilder.Entity<AdminNote>()
+                .HasOne(version => version.LastEditedBy)
+                .WithMany(author => author.AdminNotesLastEdited)
+                .HasForeignKey(note => note.LastEditedById)
+                .HasPrincipalKey(author => author.UserId);
+
+            modelBuilder.Entity<AdminNote>()
+                .HasOne(version => version.DeletedBy)
+                .WithMany(author => author.AdminNotesDeleted)
+                .HasForeignKey(note => note.DeletedById)
+                .HasPrincipalKey(author => author.UserId);
+        }
+
+        public virtual IQueryable<AdminLog> SearchLogs(IQueryable<AdminLog> query, string searchText)
+        {
+            return query.Where(log => EF.Functions.Like(log.Message, "%" + searchText + "%"));
         }
     }
 
-    [Table("preference")]
     public class Preference
     {
         // NOTE: on postgres there SHOULD be an FK ensuring that the selected character slot always exists.
@@ -88,19 +180,17 @@ namespace Content.Server.Database
         // Because if I let EFCore know about it it would explode on a circular reference.
         // Also it has to be DEFERRABLE INITIALLY DEFERRED so that insertion of new preferences works.
         // Also I couldn't figure out how to create it on SQLite.
-
-        [Column("preference_id")] public int Id { get; set; }
-        [Column("user_id")] public Guid UserId { get; set; }
-        [Column("selected_character_slot")] public int SelectedCharacterSlot { get; set; }
-        [Column("admin_ooc_color")] public string AdminOOCColor { get; set; } = null!;
+        public int Id { get; set; }
+        public Guid UserId { get; set; }
+        public int SelectedCharacterSlot { get; set; }
+        public string AdminOOCColor { get; set; } = null!;
         public List<Profile> Profiles { get; } = new();
     }
 
-    [Table("profile")]
     public class Profile
     {
-        [Column("profile_id")] public int Id { get; set; }
-        [Column("slot")] public int Slot { get; set; }
+        public int Id { get; set; }
+        public int Slot { get; set; }
         [Column("char_name")] public string CharacterName { get; set; } = null!;
         [Column("age")] public int Age { get; set; }
         [Column("sex")] public string Sex { get; set; } = null!;
@@ -124,19 +214,18 @@ namespace Content.Server.Database
 
         [Column("pref_unavailable")] public DbPreferenceUnavailableMode PreferenceUnavailable { get; set; }
 
-        [Column("preference_id")] public int PreferenceId { get; set; }
+        public int PreferenceId { get; set; }
         public Preference Preference { get; set; } = null!;
     }
 
-    [Table("job")]
     public class Job
     {
-        [Column("job_id")] public int Id { get; set; }
+        public int Id { get; set; }
         public Profile Profile { get; set; } = null!;
-        [Column("profile_id")] public int ProfileId { get; set; }
+        public int ProfileId { get; set; }
 
-        [Column("job_name")] public string JobName { get; set; } = null!;
-        [Column("priority")] public DbJobPriority Priority { get; set; }
+        public string JobName { get; set; } = null!;
+        public DbJobPriority Priority { get; set; }
     }
 
     public enum DbJobPriority
@@ -148,14 +237,13 @@ namespace Content.Server.Database
         High = 3
     }
 
-    [Table("antag")]
     public class Antag
     {
-        [Column("antag_id")] public int Id { get; set; }
+        public int Id { get; set; }
         public Profile Profile { get; set; } = null!;
-        [Column("profile_id")] public int ProfileId { get; set; }
+        public int ProfileId { get; set; }
 
-        [Column("antag_name")] public string AntagName { get; set; } = null!;
+        public string AntagName { get; set; } = null!;
     }
 
     public enum DbPreferenceUnavailableMode
@@ -165,54 +253,294 @@ namespace Content.Server.Database
         SpawnAsOverflow,
     }
 
-    [Table("assigned_user_id")]
     public class AssignedUserId
     {
-        [Column("assigned_user_id_id")] public int Id { get; set; }
-        [Column("user_name")] public string UserName { get; set; } = null!;
+        public int Id { get; set; }
+        public string UserName { get; set; } = null!;
 
-        [Column("user_id")] public Guid UserId { get; set; }
+        public Guid UserId { get; set; }
     }
 
-    [Table("admin")]
+    [Table("player")]
+    public class Player
+    {
+        public int Id { get; set; }
+
+        // Permanent data
+        public Guid UserId { get; set; }
+        public DateTime FirstSeenTime { get; set; }
+
+        // Data that gets updated on each join.
+        public string LastSeenUserName { get; set; } = null!;
+        public DateTime LastSeenTime { get; set; }
+        public IPAddress LastSeenAddress { get; set; } = null!;
+        public byte[]? LastSeenHWId { get; set; }
+
+        // Data that changes with each round
+        public List<Round> Rounds { get; set; } = null!;
+        public List<AdminLogPlayer> AdminLogs { get; set; } = null!;
+
+        public DateTime? LastReadRules { get; set; }
+
+        public List<AdminNote> AdminNotesReceived { get; set; } = null!;
+        public List<AdminNote> AdminNotesCreated { get; set; } = null!;
+        public List<AdminNote> AdminNotesLastEdited { get; set; } = null!;
+        public List<AdminNote> AdminNotesDeleted { get; set; } = null!;
+    }
+
+    [Table("whitelist")]
+    public class Whitelist
+    {
+        [Required, Key] public Guid UserId { get; set; }
+    }
+
     public class Admin
     {
-        [Column("user_id"), Key] public Guid UserId { get; set; }
-        [Column("title")] public string? Title { get; set; }
+        [Key] public Guid UserId { get; set; }
+        public string? Title { get; set; }
 
-        [Column("admin_rank_id")] public int? AdminRankId { get; set; }
+        public int? AdminRankId { get; set; }
         public AdminRank? AdminRank { get; set; }
         public List<AdminFlag> Flags { get; set; } = default!;
     }
 
-    [Table("admin_flag")]
     public class AdminFlag
     {
-        [Column("admin_flag_id")] public int Id { get; set; }
-        [Column("flag")] public string Flag { get; set; } = default!;
-        [Column("negative")] public bool Negative { get; set; }
+        public int Id { get; set; }
+        public string Flag { get; set; } = default!;
+        public bool Negative { get; set; }
 
-        [Column("admin_id")] public Guid AdminId { get; set; }
+        public Guid AdminId { get; set; }
         public Admin Admin { get; set; } = default!;
     }
 
-    [Table("admin_rank")]
     public class AdminRank
     {
-        [Column("admin_rank_id")] public int Id { get; set; }
-        [Column("name")] public string Name { get; set; } = default!;
+        public int Id { get; set; }
+        public string Name { get; set; } = default!;
 
         public List<Admin> Admins { get; set; } = default!;
         public List<AdminRankFlag> Flags { get; set; } = default!;
     }
 
-    [Table("admin_rank_flag")]
     public class AdminRankFlag
     {
-        [Column("admin_rank_flag_id")] public int Id { get; set; }
-        [Column("flag")] public string Flag { get; set; } = default!;
+        public int Id { get; set; }
+        public string Flag { get; set; } = default!;
 
-        [Column("admin_rank_id")] public int AdminRankId { get; set; }
+        public int AdminRankId { get; set; }
         public AdminRank Rank { get; set; } = default!;
+    }
+
+    public class Round
+    {
+        [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
+
+        public List<Player> Players { get; set; } = default!;
+
+        public List<AdminLog> AdminLogs { get; set; } = default!;
+
+        [ForeignKey("Server")] public int ServerId { get; set; }
+        public Server Server { get; set; } = default!;
+    }
+
+    public class Server
+    {
+        [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
+
+        public string Name { get; set; } = default!;
+
+        [InverseProperty(nameof(Round.Server))]
+        public List<Round> Rounds { get; set; } = default!;
+    }
+
+    [Index(nameof(Type))]
+    public class AdminLog
+    {
+        [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
+
+        [Key, ForeignKey("Round")] public int RoundId { get; set; }
+        public Round Round { get; set; } = default!;
+
+        [Required] public LogType Type { get; set; }
+
+        [Required] public LogImpact Impact { get; set; }
+
+        [Required] public DateTime Date { get; set; }
+
+        [Required] public string Message { get; set; } = default!;
+
+        [Required, Column(TypeName = "jsonb")] public JsonDocument Json { get; set; } = default!;
+
+        public List<AdminLogPlayer> Players { get; set; } = default!;
+
+        public List<AdminLogEntity> Entities { get; set; } = default!;
+    }
+
+    public class AdminLogPlayer
+    {
+        [Required, Key, ForeignKey("Player")] public Guid PlayerUserId { get; set; }
+        public Player Player { get; set; } = default!;
+
+        [Required, Key] public int LogId { get; set; }
+        [Required, Key] public int RoundId { get; set; }
+        [ForeignKey("LogId,RoundId")] public AdminLog Log { get; set; } = default!;
+    }
+
+    public class AdminLogEntity
+    {
+        [Required, Key] public int Uid { get; set; }
+        public string? Name { get; set; } = default!;
+    }
+
+    [Table("server_ban")]
+    public class ServerBan
+    {
+        public int Id { get; set; }
+        public Guid? UserId { get; set; }
+        [Column(TypeName = "inet")] public (IPAddress, int)? Address { get; set; }
+        public byte[]? HWId { get; set; }
+
+        public DateTime BanTime { get; set; }
+
+        public DateTime? ExpirationTime { get; set; }
+
+        public string Reason { get; set; } = null!;
+        public Guid? BanningAdmin { get; set; }
+
+        public ServerUnban? Unban { get; set; }
+
+        public List<ServerBanHit> BanHits { get; set; } = null!;
+    }
+
+    [Table("server_unban")]
+    public class ServerUnban
+    {
+        [Column("unban_id")] public int Id { get; set; }
+
+        public int BanId { get; set; }
+        public ServerBan Ban { get; set; } = null!;
+
+        public Guid? UnbanningAdmin { get; set; }
+
+        public DateTime UnbanTime { get; set; }
+    }
+
+    [Table("connection_log")]
+    public class ConnectionLog
+    {
+        public int Id { get; set; }
+
+        public Guid UserId { get; set; }
+        public string UserName { get; set; } = null!;
+
+        public DateTime Time { get; set; }
+
+        public IPAddress Address { get; set; } = null!;
+        public byte[]? HWId { get; set; }
+
+        public ConnectionDenyReason? Denied { get; set; }
+
+        public List<ServerBanHit> BanHits { get; set; } = null!;
+    }
+
+    public enum ConnectionDenyReason : byte
+    {
+        Ban = 0,
+        Whitelist = 1,
+        Full = 2,
+    }
+
+    public class ServerBanHit
+    {
+        public int Id { get; set; }
+
+        public int BanId { get; set; }
+        public int ConnectionId { get; set; }
+
+        public ServerBan Ban { get; set; } = null!;
+        public ConnectionLog Connection { get; set; } = null!;
+    }
+
+    [Table("server_role_ban")]
+    public sealed class ServerRoleBan
+    {
+        public int Id { get; set; }
+        public Guid? UserId { get; set; }
+        [Column(TypeName = "inet")] public (IPAddress, int)? Address { get; set; }
+        public byte[]? HWId { get; set; }
+
+        public DateTime BanTime { get; set; }
+
+        public DateTime? ExpirationTime { get; set; }
+
+        public string Reason { get; set; } = null!;
+        public Guid? BanningAdmin { get; set; }
+
+        public ServerRoleUnban? Unban { get; set; }
+
+        public string RoleId { get; set; } = null!;
+    }
+
+    [Table("server_role_unban")]
+    public sealed class ServerRoleUnban
+    {
+        [Column("role_unban_id")] public int Id { get; set; }
+
+        public int BanId { get; set; }
+        public ServerRoleBan Ban { get; set; } = null!;
+
+        public Guid? UnbanningAdmin { get; set; }
+
+        public DateTime UnbanTime { get; set; }
+    }
+
+    [Table("uploaded_resource_log")]
+    public sealed class UploadedResourceLog
+    {
+        [Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+        public int Id { get; set; }
+
+        public DateTime Date { get; set; }
+
+        public Guid UserId { get; set; }
+
+        public string Path { get; set; } = string.Empty;
+
+        public byte[] Data { get; set; } = default!;
+    }
+
+    [Index(nameof(PlayerUserId))]
+    public class AdminNote
+    {
+        [Required, Key, DatabaseGenerated(DatabaseGeneratedOption.Identity)] public int Id { get; set; }
+
+        [ForeignKey("Round")] public int? RoundId { get; set; }
+        public Round? Round { get; set; }
+
+        [Required, ForeignKey("Player")] public Guid PlayerUserId { get; set; }
+        public Player Player { get; set; } = default!;
+
+        [Required, MaxLength(4096)] public string Message { get; set; } = string.Empty;
+
+        [Required, ForeignKey("CreatedBy")] public Guid CreatedById { get; set; }
+        [Required] public Player CreatedBy { get; set; } = default!;
+
+        [Required] public DateTime CreatedAt { get; set; }
+
+        [Required, ForeignKey("LastEditedBy")] public Guid LastEditedById { get; set; }
+        [Required] public Player LastEditedBy { get; set; } = default!;
+
+        [Required] public DateTime LastEditedAt { get; set; }
+
+        public bool Deleted { get; set; }
+        [ForeignKey("DeletedBy")] public Guid? DeletedById { get; set; }
+        public Player? DeletedBy { get; set; }
+        public DateTime? DeletedAt { get; set; }
+
+        public bool ShownToPlayer { get; set; }
     }
 }
