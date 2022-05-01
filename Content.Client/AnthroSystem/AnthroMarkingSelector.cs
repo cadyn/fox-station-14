@@ -33,9 +33,9 @@ namespace Content.Client.AnthroSystem
         private readonly ItemList _usedMarkings;
 
         private readonly Control _bodyColorContainer;
-        private readonly ColorSlider _bodyColorSliderR;
-        private readonly ColorSlider _bodyColorSliderG;
-        private readonly ColorSlider _bodyColorSliderB;
+        private readonly Color _bodyColorSliderR;
+        private readonly Color _bodyColorSliderG;
+        private readonly Color _bodyColorSliderB;
 
 
         private readonly Control _colorContainer;

@@ -82,7 +82,7 @@ namespace Content.Client.Preferences.UI
         private readonly List<AntagPreferenceSelector> _antagPreferences;
 
         // ANTHROSYSTEM MODIFICATIONS
-        private IEntity _previewDummy;
+        private EntityUid _previewDummy;
         private Control _previewSpriteControl => CSpriteViewFront;
         private Control _previewSpriteSideControl => CSpriteViewSide;
         private SpriteView _previewSprite;
